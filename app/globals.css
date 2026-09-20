@@ -98,7 +98,62 @@ label {
   color: #404040;
 }
 
-.goal-list {
-  list-style: square;
-  padding-left: 1.5em;
+/*
+ * The Dashboard and the Goal page. Everything below is layout and spacing:
+ * the Cat is the only decoration the app has, and it is a picture.
+ */
+
+.dashboard {
+  list-style: none;
+  padding-left: 0;
+  margin: 1em 0;
+}
+
+/* A Goal row: its Cat, then its name and count beside it. */
+.dashboard-goal {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  margin: 0 0 1em;
+}
+
+/*
+ * Pixel art, drawn at 28 by 24 and shown at twice that. Smoothing it would
+ * turn the pixels into porridge, which is the whole of why this rule exists.
+ */
+.cat {
+  image-rendering: pixelated;
+  flex: none;
+}
+
+/*
+ * One Report. A Goal's Reports are read top to bottom, oldest first, so they
+ * are separated by a rule rather than boxed up as cards.
+ */
+.report {
+  border-top: 1px solid #c0c0c0;
+  padding-top: 0.5em;
+  margin: 1em 0;
+}
+
+.report h3 {
+  font-size: 0.85em;
+  font-weight: normal;
+  color: #404040;
+  margin: 0;
+}
+
+/* The Window Size is two digits, so it does not need a full-width field. */
+input[type="number"] {
+  font-family: inherit;
+  font-size: 1em;
+  padding: 0.3em;
+  border: 1px solid #808080;
+  width: 5em;
+}
+
+/* The fold the delete button sits behind. */
+details summary {
+  cursor: pointer;
+  margin-top: 1em;
 }
