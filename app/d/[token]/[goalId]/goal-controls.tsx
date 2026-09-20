@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, type ReactNode } from "react";
 
 import { closeGoalAction, deleteGoalAction, type GoalState } from "../actions";
 
@@ -19,28 +19,69 @@ export function GoalControls({
 }: {
   ownerToken: string;
   goalId: string;
+  /** A Goal can only be closed once, so the button goes when it has been. */
   closed: boolean;
 }) {
   return (
     <>
-      {closed ? null : <CloseForm ownerToken={ownerToken} goalId={goalId} />}
-      <details>
+      {closed ? null : (
+        <GoalForm
+          action={closeGoalAction}
+          ownerToken={ownerToken}
+          goalId={goalId}
+          label="I got my yes"
+          pendingLabel="Closing..."
+        >
+          <p className="note">
+            The Response Link stops taking Responses and says the Goal is
+            closed. Everything already written stays here to read.
+          </p>
+        </GoalForm>
+      )}
+
+      <details className="goal-danger">
         <summary>Delete this Goal</summary>
-        <DeleteForm ownerToken={ownerToken} goalId={goalId} />
+        <GoalForm
+          action={deleteGoalAction}
+          ownerToken={ownerToken}
+          goalId={goalId}
+          label="Delete it for good"
+          pendingLabel="Deleting..."
+        >
+          <p className="warning">
+            This removes the Goal, every Response it collected and every Report
+            written from them. The Response Link stops opening anything. There
+            is no undo.
+          </p>
+        </GoalForm>
       </details>
     </>
   );
 }
 
-function CloseForm({
+/**
+ * One button that does one thing to this Goal, with what it does written
+ * above it. Both endings hand the Owner Link to the server, where it is
+ * checked: the button being on screen is not what decides who may press it.
+ */
+function GoalForm({
+  action,
   ownerToken,
   goalId,
+  label,
+  pendingLabel,
+  children,
 }: {
+  action: (state: GoalState, formData: FormData) => Promise<GoalState>;
   ownerToken: string;
   goalId: string;
+  label: string;
+  pendingLabel: string;
+  /** What this ending does, said before the button that does it. */
+  children: ReactNode;
 }) {
   const [state, formAction, pending] = useActionState<GoalState, FormData>(
-    closeGoalAction,
+    action,
     { status: "idle" },
   );
 
@@ -48,45 +89,9 @@ function CloseForm({
     <form action={formAction}>
       <input type="hidden" name="ownerToken" value={ownerToken} />
       <input type="hidden" name="goalId" value={goalId} />
+      {children}
       <button type="submit" disabled={pending}>
-        {pending ? "Closing..." : "I got my yes"}
-      </button>
-      <p className="note">
-        The Response Link stops taking answers and says the Goal is closed.
-        Everything already written stays here to read.
-      </p>
-      {state.status === "error" ? (
-        <p className="error" role="alert">
-          {state.message}
-        </p>
-      ) : null}
-    </form>
-  );
-}
-
-function DeleteForm({
-  ownerToken,
-  goalId,
-}: {
-  ownerToken: string;
-  goalId: string;
-}) {
-  const [state, formAction, pending] = useActionState<GoalState, FormData>(
-    deleteGoalAction,
-    { status: "idle" },
-  );
-
-  return (
-    <form action={formAction}>
-      <input type="hidden" name="ownerToken" value={ownerToken} />
-      <input type="hidden" name="goalId" value={goalId} />
-      <p className="warning">
-        This removes the Goal, every Response it collected and every Report
-        written from them. The Response Link stops opening anything. There is
-        no undo.
-      </p>
-      <button type="submit" disabled={pending}>
-        {pending ? "Deleting..." : "Delete it for good"}
+        {pending ? pendingLabel : label}
       </button>
       {state.status === "error" ? (
         <p className="error" role="alert">

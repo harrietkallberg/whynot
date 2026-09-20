@@ -6,6 +6,8 @@ import { catOfTheDay } from "@/lib/cats";
 import { dashboardFor } from "@/lib/dashboard";
 import { resolveOwner } from "@/lib/owner";
 
+import { countOfResponses } from "./counts";
+
 /**
  * The Dashboard behind an Owner Link: every Goal this Owner has created, side
  * by side, as a Cat, a name and a count.
@@ -61,13 +63,6 @@ export default async function Page({ params }: PageProps<"/d/[token]">) {
       </p>
     </main>
   );
-}
-
-/** How many nos have come in. Never how many people, and never when. */
-function countOfResponses(responseCount: number): string {
-  if (responseCount === 0) return "No Responses yet";
-  if (responseCount === 1) return "1 Response";
-  return `${responseCount} Responses`;
 }
 
 /** Today's Cat, keeping the page company until there is a Goal on it. */

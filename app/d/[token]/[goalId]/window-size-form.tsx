@@ -19,6 +19,7 @@ export function WindowSizeForm({
   nextWindowSize,
   minWindowSize,
   maxWindowSize,
+  closed,
 }: {
   ownerToken: string;
   goalId: string;
@@ -26,6 +27,8 @@ export function WindowSizeForm({
   nextWindowSize: number | null;
   minWindowSize: number;
   maxWindowSize: number;
+  /** The Goal takes no more Responses, so no further Window will fill. */
+  closed: boolean;
 }) {
   const [state, formAction, pending] = useActionState<
     WindowSizeState,
@@ -38,6 +41,7 @@ export function WindowSizeForm({
         Responses per Report, {minWindowSize} to {maxWindowSize}
       </label>
       <input
+        className="window-size"
         id="windowSize"
         name="windowSize"
         type="number"
@@ -51,9 +55,9 @@ export function WindowSizeForm({
       <input type="hidden" name="ownerToken" value={ownerToken} />
       <input type="hidden" name="goalId" value={goalId} />
       <p className="note">
-        The Window filling now stays at {windowSize}, whatever you choose here.
-        A Report covers exactly the Window it was written for, so a new size
-        starts with the next one.
+        {closed
+          ? `This Goal is closed, so nothing more will arrive to fill a Window. The last one ran at ${windowSize}.`
+          : `The Window filling now stays at ${windowSize}, whatever you choose here. A Report covers exactly the Window it was written for, so a new size starts with the next one.`}
       </p>
       <button type="submit" disabled={pending}>
         {pending ? "Saving..." : "Save the Window Size"}

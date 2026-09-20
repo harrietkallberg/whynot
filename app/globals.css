@@ -144,7 +144,7 @@ label {
 }
 
 /* The Window Size is two digits, so it does not need a full-width field. */
-input[type="number"] {
+.window-size {
   font-family: inherit;
   font-size: 1em;
   padding: 0.3em;
@@ -152,8 +152,8 @@ input[type="number"] {
   width: 5em;
 }
 
-/* The fold the delete button sits behind. */
-details summary {
+/* The fold that deleting a Goal sits behind. */
+.goal-danger summary {
   cursor: pointer;
   margin-top: 1em;
 }

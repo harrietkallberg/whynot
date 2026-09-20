@@ -20,9 +20,9 @@ import {
  */
 
 /**
- * The drawing of a Goal's Cat, which is the whole of its status display: a
- * Window still filling is asleep, an unread Report is alert, and a Goal whose
- * Reports have all been read is sitting.
+ * The drawing of a Goal's Cat, and the only thing on the page that says where
+ * a Goal has got to: a Window still filling is asleep, an unread Report is
+ * alert, and a Goal whose Reports have all been read is sitting.
  */
 export type Pose = "asleep" | "alert" | "sitting";
 
@@ -171,8 +171,10 @@ export async function openGoal(
     id: goal.id,
     title: goal.title,
     catId: goal.catId,
-    // Read by the time they are on screen, so the Cat has already settled.
-    pose: reports.length === 0 ? "asleep" : "sitting",
+    // Every one of them has just been marked read, so the Cat has settled by
+    // the time they are on screen. Same rule as the Dashboard's, so that a
+    // Goal cannot be alert on one page and sitting on the other.
+    pose: poseOf({ written: reports.length, unread: 0 }),
     responseCount: responseCounts.get(goal.id) ?? 0,
     responseToken: goal.responseToken,
     windowSize: goal.windowSize,
@@ -235,8 +237,10 @@ async function catchUpReports(
         await maybeGenerateReport(goalId, generate);
       } catch (error) {
         owed.add(goalId);
-        // Safe to log: a Goal id is not a credential, and nothing here
-        // carries an Owner Link or a Response (ADR-0002, ADR-0003).
+        // A Goal id is not a credential and no Owner Link reaches this far
+        // (ADR-0002). The error itself comes from whichever generator was
+        // passed in, so keeping Response text out of what one throws is a
+        // constraint on the generator, not something this line can enforce.
         console.error(
           `Could not write the Report owed by Goal ${goalId}`,
           error,

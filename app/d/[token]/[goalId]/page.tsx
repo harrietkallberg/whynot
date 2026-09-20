@@ -6,6 +6,7 @@ import { CopyButton } from "@/app/copy-button";
 import { openGoal, type OpenedGoal } from "@/lib/dashboard";
 import { MAX_WINDOW_SIZE, MIN_WINDOW_SIZE } from "@/lib/goals";
 
+import { countOfResponses } from "../counts";
 import { GoalControls } from "./goal-controls";
 import { WindowSizeForm } from "./window-size-form";
 
@@ -39,9 +40,7 @@ export default async function Page({
       <p className="dashboard-goal">
         <Cat catId={goal.catId} pose={goal.pose} />
         <span className="note">
-          {goal.responseCount === 1
-            ? "1 Response so far"
-            : `${goal.responseCount} Responses so far`}
+          {countOfResponses(goal.responseCount)}
           {goal.closed ? " · closed" : null}
         </span>
       </p>
@@ -52,20 +51,17 @@ export default async function Page({
       <h2>The Response Link</h2>
       <ResponseLink responseToken={goal.responseToken} closed={goal.closed} />
 
-      {goal.closed ? null : (
-        <>
-          <hr />
-          <h2>Window Size</h2>
-          <WindowSizeForm
-            ownerToken={token}
-            goalId={goal.id}
-            windowSize={goal.windowSize}
-            nextWindowSize={goal.nextWindowSize}
-            minWindowSize={MIN_WINDOW_SIZE}
-            maxWindowSize={MAX_WINDOW_SIZE}
-          />
-        </>
-      )}
+      <hr />
+      <h2>Window Size</h2>
+      <WindowSizeForm
+        ownerToken={token}
+        goalId={goal.id}
+        windowSize={goal.windowSize}
+        nextWindowSize={goal.nextWindowSize}
+        minWindowSize={MIN_WINDOW_SIZE}
+        maxWindowSize={MAX_WINDOW_SIZE}
+        closed={goal.closed}
+      />
 
       <hr />
       <h2>{goal.closed ? "This Goal is closed" : "Got your yes?"}</h2>
@@ -115,7 +111,7 @@ function Reports({ goal }: { goal: OpenedGoal }) {
         <p>
           No Reports yet. The first one unlocks once {goal.windowSize}{" "}
           Responses have come in, and it summarises all {goal.windowSize}{" "}
-          together — you will never see any single answer on its own.
+          together — no single Response is ever shown on its own.
         </p>
       ) : null}
     </>

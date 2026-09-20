@@ -1,5 +1,4 @@
 import { and, eq, sql } from "drizzle-orm";
-import type { PgUpdateSetSource } from "drizzle-orm/pg-core";
 
 import { db, schema } from "@/db";
 
@@ -107,27 +106,14 @@ export type GoalClosure = "closed" | "not-owned";
 export type GoalDeletion = "deleted" | "not-owned";
 
 /**
- * Applies a change to a Goal the caller owns, and refuses otherwise.
+ * Matches this one Goal, and only for the Owner who owns it.
  *
- * Ownership is a condition of the statement rather than a lookup before it:
- * one round trip, and no window between the check and the write in which a
- * Goal could change hands.
+ * Every write below carries it, so ownership is a condition of the statement
+ * rather than a lookup before it: one round trip, and no window between the
+ * check and the write in which a Goal could change hands.
  */
-async function updateOwnedGoal(
-  ownerToken: string,
-  goalId: string,
-  values: PgUpdateSetSource<typeof schema.goal>,
-): Promise<boolean> {
-  const owner = await resolveOwner(ownerToken);
-  if (!owner || !isGoalId(goalId)) return false;
-
-  const changed = await db
-    .update(schema.goal)
-    .set(values)
-    .where(and(eq(schema.goal.id, goalId), eq(schema.goal.ownerId, owner.id)))
-    .returning({ id: schema.goal.id });
-
-  return changed.length === 1;
+function goalOwnedBy(goalId: string, ownerId: string) {
+  return and(eq(schema.goal.id, goalId), eq(schema.goal.ownerId, ownerId));
 }
 
 /**
@@ -155,9 +141,16 @@ export async function setWindowSize(
     return "out-of-range";
   }
 
-  return (await updateOwnedGoal(ownerToken, goalId, { nextWindowSize: size }))
-    ? "queued"
-    : "not-owned";
+  const owner = await resolveOwner(ownerToken);
+  if (!owner || !isGoalId(goalId)) return "not-owned";
+
+  const queued = await db
+    .update(schema.goal)
+    .set({ nextWindowSize: size })
+    .where(goalOwnedBy(goalId, owner.id))
+    .returning({ id: schema.goal.id });
+
+  return queued.length === 1 ? "queued" : "not-owned";
 }
 
 /**
@@ -171,11 +164,16 @@ export async function closeGoal(
   ownerToken: string,
   goalId: string,
 ): Promise<GoalClosure> {
-  const closed = await updateOwnedGoal(ownerToken, goalId, {
-    closedAt: sql`coalesce(${schema.goal.closedAt}, now())`,
-  });
+  const owner = await resolveOwner(ownerToken);
+  if (!owner || !isGoalId(goalId)) return "not-owned";
 
-  return closed ? "closed" : "not-owned";
+  const closed = await db
+    .update(schema.goal)
+    .set({ closedAt: sql`coalesce(${schema.goal.closedAt}, now())` })
+    .where(goalOwnedBy(goalId, owner.id))
+    .returning({ id: schema.goal.id });
+
+  return closed.length === 1 ? "closed" : "not-owned";
 }
 
 /**
@@ -192,7 +190,7 @@ export async function deleteGoal(
 
   const deleted = await db
     .delete(schema.goal)
-    .where(and(eq(schema.goal.id, goalId), eq(schema.goal.ownerId, owner.id)))
+    .where(goalOwnedBy(goalId, owner.id))
     .returning({ id: schema.goal.id });
 
   return deleted.length === 1 ? "deleted" : "not-owned";
