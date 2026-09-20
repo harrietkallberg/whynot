@@ -3,3 +3,24 @@
 node_modules/
 .claude/
 skills-lock.json
+
+# next.js
+/.next/
+/out/
+/build
+
+# env
+.env
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
