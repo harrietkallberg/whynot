@@ -171,7 +171,7 @@ describe("createResponse", () => {
     ]);
   });
 
-  it("refuses a browser that never claimed a Goal when the Response is unusable", async () => {
+  it("leaves a browser its one Response when the first attempt was too short", async () => {
     const goal = await createTestGoal("Play the Wigmore Hall");
     const browserHash = browserHashFor("a-browser", goal.responseToken);
 
@@ -213,7 +213,7 @@ describe("createResponse", () => {
     expect(await responsesOf(goal.goalId)).toEqual([]);
   });
 
-  it("gives two browsers answering at the same moment a seq each", async () => {
+  it("gives four browsers answering at the same moment a seq each", async () => {
     const goal = await createTestGoal("Play the Wigmore Hall");
 
     const results = await Promise.all(

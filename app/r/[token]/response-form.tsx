@@ -47,7 +47,12 @@ export function ResponseForm({
     hasRespondedOnServer,
   );
 
-  const [length, setLength] = useState(0);
+  /**
+   * Held here rather than left to the DOM: React resets a form once its
+   * action returns, and a Respondent whose answer came back too short should
+   * find their words still in the box.
+   */
+  const [body, setBody] = useState("");
 
   if (state.status === "thanks" || alreadyResponded || respondedLocally) {
     return <Thanks />;
@@ -75,11 +80,14 @@ export function ResponseForm({
         autoFocus
         disabled={pending}
         placeholder="The real reason, in your own words."
-        onChange={(event) => setLength(event.target.value.length)}
+        value={body}
+        onChange={(event) => setBody(event.target.value)}
       />
       <input type="hidden" name="responseToken" value={responseToken} />
       <p className="note">
-        {length} of {maxLength} characters. At least {minLength}.
+        {/* Trimmed, because that is the length the server measures: a box
+            full of spaces must not read as long enough. */}
+        {body.trim().length} of {maxLength} characters. At least {minLength}.
       </p>
       <p className="note">{ANONYMITY_PROMISE}</p>
       <button type="submit" disabled={pending}>

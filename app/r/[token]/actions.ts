@@ -2,6 +2,7 @@
 
 import {
   browserHashFor,
+  checkResponseLength,
   createResponse,
   MAX_RESPONSE_LENGTH,
   MIN_RESPONSE_LENGTH,
@@ -25,12 +26,24 @@ export type SubmitResponseState =
 
 const THANKS: SubmitResponseState = { status: "thanks" };
 
+const LENGTH_MESSAGES = {
+  "too-short": `A few more words, please — at least ${MIN_RESPONSE_LENGTH} characters.`,
+  "too-long": `That is longer than ${MAX_RESPONSE_LENGTH} characters. Trim it down.`,
+} as const;
+
 export async function submitResponseAction(
   _state: SubmitResponseState,
   formData: FormData,
 ): Promise<SubmitResponseState> {
   const responseToken = String(formData.get("responseToken") ?? "");
   const body = String(formData.get("body") ?? "");
+
+  // Before the cookie: a visitor who types three characters and gives up
+  // should not be left carrying an identity for a year.
+  const rejection = checkResponseLength(body);
+  if (rejection) {
+    return { status: "error", message: LENGTH_MESSAGES[rejection] };
+  }
 
   const browserToken = await claimBrowserToken();
 
@@ -51,16 +64,11 @@ export async function submitResponseAction(
         return THANKS;
       case "closed":
         return { status: "closed" };
+      // Unreachable through this form, which checks the bounds above; the
+      // seam answers for any caller, so the cases are still handled.
       case "too-short":
-        return {
-          status: "error",
-          message: `A few more words, please — at least ${MIN_RESPONSE_LENGTH} characters.`,
-        };
       case "too-long":
-        return {
-          status: "error",
-          message: `That is longer than ${MAX_RESPONSE_LENGTH} characters. Trim it down.`,
-        };
+        return { status: "error", message: LENGTH_MESSAGES[result.status] };
       case "unknown-goal":
         return {
           status: "error",

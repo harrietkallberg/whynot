@@ -29,7 +29,7 @@ export default async function Page({ params }: PageProps<"/r/[token]">) {
 
   const browserToken = await readBrowserToken();
   const state = await findResponseFormState({
-    goalId: goal.id,
+    responseToken: token,
     browserHash:
       browserToken === null ? null : browserHashFor(browserToken, token),
   });

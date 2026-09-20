@@ -5,6 +5,12 @@
  * This is a convenience, not the rule: one Response per browser per Goal is
  * enforced by the `submission_guard` row, which no visitor can clear. Nothing
  * here is ever sent to the server, and the note holds no Response text.
+ *
+ * The keys name the Goals this browser has answered, so anything that can
+ * read this origin's localStorage can list them. That is accepted: such a
+ * script is already on the page and can read the Goal in front of it, and the
+ * alternative — no note at all — costs a Respondent the form coming back at
+ * them after a reload.
  */
 const KEY_PREFIX = "whynot.responded.";
 

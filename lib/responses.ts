@@ -42,12 +42,33 @@ function normaliseBody(body: string): string {
 }
 
 /**
+ * Whether a body can be stored at all, or null when it can.
+ *
+ * Exported so the form's action can turn a hopeless answer away before it
+ * gives the browser an identity; createResponse checks it again regardless,
+ * because the seam has to hold for any caller.
+ */
+export function checkResponseLength(
+  body: string,
+): "too-short" | "too-long" | null {
+  const length = normaliseBody(body).length;
+
+  if (length < MIN_RESPONSE_LENGTH) return "too-short";
+  if (length > MAX_RESPONSE_LENGTH) return "too-long";
+  return null;
+}
+
+/**
  * What a browser is called in the `submission_guard` table.
  *
  * The Response Token is folded in, so the same browser hashes differently for
  * every Goal: the guard can then stop a second Response to one Goal without
  * the table ever showing that two Goals were answered by the same person
  * (ADR-0003).
+ *
+ * Deliberately not hashToken from lib/tokens: that hashes a credential so a
+ * leaked table cannot be used to log in, and nothing here is a credential.
+ * This hash exists to be unjoinable, which is why it is salted per Goal.
  */
 export function browserHashFor(
   browserToken: string,
@@ -66,12 +87,12 @@ export async function createResponse({
   body,
   browserHash,
 }: CreateResponseInput): Promise<CreateResponseResult> {
-  const normalised = normaliseBody(body);
-
   // Checked before anything is claimed: an unusable Response must not spend
   // this browser's one shot at the Goal.
-  if (normalised.length < MIN_RESPONSE_LENGTH) return { status: "too-short" };
-  if (normalised.length > MAX_RESPONSE_LENGTH) return { status: "too-long" };
+  const rejection = checkResponseLength(body);
+  if (rejection) return { status: rejection };
+
+  const normalised = normaliseBody(body);
 
   return db.transaction(async (tx) => {
     // Locking the Goal row is what makes the seq below safe: two Respondents
@@ -125,20 +146,21 @@ export async function createResponse({
 export type ResponseFormState = "open" | "closed" | "already-responded";
 
 export async function findResponseFormState({
-  goalId,
+  responseToken,
   browserHash,
 }: {
-  goalId: string;
+  /** The same identity createResponse takes: the token that was opened. */
+  responseToken: string;
   /** Null when the browser carries no token yet, which means it has not. */
   browserHash: string | null;
 }): Promise<ResponseFormState> {
   const [goal] = await db
-    .select({ closedAt: schema.goal.closedAt })
+    .select({ id: schema.goal.id, closedAt: schema.goal.closedAt })
     .from(schema.goal)
-    .where(eq(schema.goal.id, goalId))
+    .where(eq(schema.goal.responseToken, responseToken))
     .limit(1);
 
-  if (goal?.closedAt != null) return "closed";
+  if (!goal || goal.closedAt !== null) return "closed";
   if (browserHash === null) return "open";
 
   const [guard] = await db
@@ -146,7 +168,7 @@ export async function findResponseFormState({
     .from(schema.submissionGuard)
     .where(
       and(
-        eq(schema.submissionGuard.goalId, goalId),
+        eq(schema.submissionGuard.goalId, goal.id),
         eq(schema.submissionGuard.browserHash, browserHash),
       ),
     )
