@@ -34,7 +34,9 @@ export default async function Page({ params }: PageProps<"/d/[token]">) {
             <li key={goal.id}>
               {goal.title}
               <br />
-              <span className="note">Response Link: /r/{goal.responseToken}</span>
+              <span className="note">
+                Response Link: /r/{goal.responseToken}
+              </span>
             </li>
           ))}
         </ul>

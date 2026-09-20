@@ -3,6 +3,7 @@ import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 
 import { catOfTheDay } from "./cats";
+import { normaliseTitle } from "./goal-title";
 import { mintOwner, resolveOwner } from "./owner";
 import { mintToken } from "./tokens";
 
@@ -11,35 +12,6 @@ export type CreateGoalInput = {
   /** An Owner Link token held by a returning browser, if there is one. */
   ownerToken?: string | null;
 };
-
-/**
- * A Goal is a single line of text, and that line is shown to everyone who
- * opens its Response Link, so it stays short enough to read at a glance.
- */
-export const MAX_TITLE_LENGTH = 140;
-
-/** Thrown when the one thing a Goal needs — a name — is unusable. */
-export class InvalidGoalTitleError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InvalidGoalTitleError";
-  }
-}
-
-function normaliseTitle(title: string): string {
-  const normalised = title.replace(/\s+/g, " ").trim();
-
-  if (normalised === "") {
-    throw new InvalidGoalTitleError("A Goal needs a name.");
-  }
-  if (normalised.length > MAX_TITLE_LENGTH) {
-    throw new InvalidGoalTitleError(
-      `A Goal's name has to fit in ${MAX_TITLE_LENGTH} characters.`,
-    );
-  }
-
-  return normalised;
-}
 
 export type CreatedGoal = {
   goalId: string;
@@ -51,6 +23,26 @@ export type CreatedGoal = {
 };
 
 /**
+ * The Owner this Goal belongs to: the one behind the Owner Link the browser
+ * already holds, or a new one.
+ *
+ * A token that matches nobody — a wiped database, a mangled paste — mints a
+ * fresh Owner rather than failing, because the alternative is a dead end in
+ * the only flow the app has. The new Owner Link is then shown with the usual
+ * warning, so nothing is replaced behind the Owner's back.
+ */
+async function ownerFor(
+  ownerToken: string | null | undefined,
+): Promise<{ id: string; ownerToken: string }> {
+  if (ownerToken) {
+    const existing = await resolveOwner(ownerToken);
+    if (existing) return { id: existing.id, ownerToken };
+  }
+
+  return mintOwner();
+}
+
+/**
  * Creates a Goal, minting an Owner for it when the browser does not already
  * hold an Owner Link.
  */
@@ -60,10 +52,7 @@ export async function createGoal({
 }: CreateGoalInput): Promise<CreatedGoal> {
   const title = normaliseTitle(rawTitle);
 
-  const existingOwner = await resolveOwner(existingOwnerToken);
-  const owner = existingOwner
-    ? { id: existingOwner.id, ownerToken: existingOwnerToken as string }
-    : await mintOwner();
+  const owner = await ownerFor(existingOwnerToken);
 
   const responseToken = mintToken();
   const catId = catOfTheDay(new Date());
@@ -104,15 +93,21 @@ export async function findGoalsByOwnerToken(
     .orderBy(desc(schema.goal.createdAt));
 }
 
-export type GoalSummary = {
+/**
+ * A Goal as a Respondent sees it: its name, and nothing else at all. Window
+ * Size, the Cat and every count stay on the Owner's side of the line.
+ */
+export type RespondentGoal = {
   id: string;
   title: string;
-  catId: number;
-  windowSize: number;
 };
 
 /** A Goal as its Owner sees it, with the Response Link they hand out. */
-export type OwnedGoal = GoalSummary & { responseToken: string };
+export type OwnedGoal = RespondentGoal & {
+  catId: number;
+  windowSize: number;
+  responseToken: string;
+};
 
 /**
  * The Goal behind a Response Link. The Response form shows the Goal's name and
@@ -121,13 +116,11 @@ export type OwnedGoal = GoalSummary & { responseToken: string };
  */
 export async function findGoalByResponseToken(
   responseToken: string,
-): Promise<GoalSummary | null> {
+): Promise<RespondentGoal | null> {
   const [goal] = await db
     .select({
       id: schema.goal.id,
       title: schema.goal.title,
-      catId: schema.goal.catId,
-      windowSize: schema.goal.windowSize,
     })
     .from(schema.goal)
     .where(eq(schema.goal.responseToken, responseToken))

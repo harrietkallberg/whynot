@@ -8,6 +8,7 @@ import {
   type CreateGoalState,
   type EmailState,
 } from "./actions";
+import { MAX_TITLE_LENGTH } from "@/lib/goal-title";
 import {
   getOwnerToken,
   getServerOwnerToken,
@@ -28,11 +29,14 @@ export function CreateGoalForm() {
   const [state, formAction, pending] = useActionState<
     CreateGoalState,
     FormData
-  >(async (previous, formData) => {
-    const next = await createGoalAction(previous, formData);
-    if (next.status === "created") rememberOwnerToken(next.ownerToken);
-    return next;
-  }, { status: "idle" });
+  >(
+    async (previous, formData) => {
+      const next = await createGoalAction(previous, formData);
+      if (next.status === "created") rememberOwnerToken(next.ownerToken);
+      return next;
+    },
+    { status: "idle" },
+  );
 
   const storedOwnerToken = useSyncExternalStore(
     subscribeToOwnerToken,
@@ -53,7 +57,8 @@ export function CreateGoalForm() {
     <>
       <h1>WhyNot</h1>
       <p className="tagline">
-        Every yes is preceded by a pile of nos. Collect the reasons, anonymously.
+        Every yes is preceded by a pile of nos. Collect the reasons,
+        anonymously.
       </p>
 
       {dashboardHref !== null && state.status !== "created" ? (
@@ -71,7 +76,7 @@ export function CreateGoalForm() {
           id="title"
           name="title"
           type="text"
-          maxLength={140}
+          maxLength={MAX_TITLE_LENGTH}
           required
           autoFocus
           autoComplete="off"
@@ -97,13 +102,13 @@ export function CreateGoalForm() {
       ) : null}
 
       {state.status === "created" ? (
-        <CreatedGoal origin={origin} state={state} />
+        <GoalLinks origin={origin} state={state} />
       ) : null}
     </>
   );
 }
 
-function CreatedGoal({
+function GoalLinks({
   origin,
   state,
 }: {

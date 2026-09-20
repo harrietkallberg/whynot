@@ -1,6 +1,7 @@
 "use server";
 
-import { createGoal, InvalidGoalTitleError } from "@/lib/goals";
+import { InvalidGoalTitleError } from "@/lib/goal-title";
+import { createGoal } from "@/lib/goals";
 import { setOwnerEmail } from "@/lib/owner";
 
 /**

@@ -21,9 +21,8 @@ export default async function Page({ params }: PageProps<"/r/[token]">) {
       <hr />
       <p>The Response form is not built yet.</p>
       <p className="note">
-        When it is, your answer will be anonymous: the Owner sees a summary of
-        every {goal.windowSize} answers, never your words and never when you
-        sent them.
+        When it is, your Response will be anonymous: the Owner never sees your
+        words, and never sees when you sent them.
       </p>
     </main>
   );

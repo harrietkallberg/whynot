@@ -24,6 +24,10 @@ function dayOfYear(date: Date): number {
  * The Cat for a calendar day, as an index into the set of Cats. The date is
  * read in UTC so every visitor sees the same Cat at the same moment whatever
  * their clock says.
+ *
+ * The size of the set is a parameter because with one Cat the rule is
+ * invisible: every date answers 0, and the wrap at the end of the set could
+ * break unnoticed until the day a second Cat is drawn.
  */
 export function catOfTheDay(date: Date, catCount: number = CAT_COUNT): number {
   return dayOfYear(date) % catCount;
