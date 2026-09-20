@@ -13,16 +13,25 @@ import { hashToken, mintToken } from "./tokens";
 export type Owner = { id: string };
 
 /**
+ * The database, or a transaction on it. An Owner row is written alongside the
+ * Goal that caused it and the pair has to commit or fail together, so every
+ * function here can run inside a caller's transaction.
+ */
+export type Executor =
+  typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
  * The Owner holding this Owner Link, or null when the token belongs to nobody
  * — which is what a caller sees for a guess, a typo, or a link that outlived
  * its row.
  */
 export async function resolveOwner(
   ownerToken: string | null | undefined,
+  executor: Executor = db,
 ): Promise<Owner | null> {
   if (!ownerToken) return null;
 
-  const [owner] = await db
+  const [owner] = await executor
     .select({ id: schema.owner.id })
     .from(schema.owner)
     .where(eq(schema.owner.tokenHash, hashToken(ownerToken)))
@@ -34,9 +43,9 @@ export async function resolveOwner(
 export type MintedOwner = { id: string; ownerToken: string };
 
 /** Mints a new Owner and returns the only copy of their Owner Link token. */
-export async function mintOwner(): Promise<MintedOwner> {
+export async function mintOwner(executor: Executor = db): Promise<MintedOwner> {
   const ownerToken = mintToken();
-  const [owner] = await db
+  const [owner] = await executor
     .insert(schema.owner)
     .values({ tokenHash: hashToken(ownerToken) })
     .returning({ id: schema.owner.id });

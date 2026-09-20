@@ -9,8 +9,17 @@ import { createHash, randomBytes } from "node:crypto";
 /** Bitcoin base58: no 0, O, I or l, so a token survives being read aloud. */
 const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
-/** 128 bits of randomness, which base58 renders in 21-22 characters. */
+/** 128 bits of randomness. */
 const TOKEN_BYTES = 16;
+
+/**
+ * Every token is this wide. Base58 is a change of base, not a block encoding,
+ * so a draw that happens to be a small number encodes short — a 1-in-2000 draw
+ * comes out at 20 characters or fewer, and once in a very long while at one.
+ * Left-padding with the zero digit fixes the width without touching the 128
+ * bits behind it, exactly as a leading zero byte is already spelled out.
+ */
+const TOKEN_LENGTH = 22;
 
 function encodeBase58(bytes: Buffer): string {
   let remaining = 0n;
@@ -22,19 +31,22 @@ function encodeBase58(bytes: Buffer): string {
     remaining /= 58n;
   }
 
-  // A leading zero byte carries no value but is still a byte, so base58 spells
-  // each one out as the zero digit.
-  for (const byte of bytes) {
-    if (byte !== 0) break;
-    encoded = ALPHABET[0] + encoded;
-  }
-
-  return encoded === "" ? ALPHABET[0] : encoded;
+  return encoded.padStart(TOKEN_LENGTH, ALPHABET[0]);
 }
 
-/** A fresh 128-bit token, for an Owner Link or a Response Link. */
-export function mintToken(): string {
-  return encodeBase58(randomBytes(TOKEN_BYTES));
+/**
+ * A fresh 128-bit token, for an Owner Link or a Response Link: always
+ * TOKEN_LENGTH base58 characters.
+ *
+ * The bytes can be supplied so the width is testable at the values a random
+ * draw reaches too rarely to rely on.
+ */
+export function mintToken(bytes: Buffer = randomBytes(TOKEN_BYTES)): string {
+  if (bytes.length !== TOKEN_BYTES) {
+    throw new Error(`A token is ${TOKEN_BYTES} bytes, not ${bytes.length}.`);
+  }
+
+  return encodeBase58(bytes);
 }
 
 /**

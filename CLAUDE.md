@@ -18,11 +18,12 @@ Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/age
 
 `npm test` runs Vitest. Tests that touch the database run against the Neon
 `test` branch, whose credentials live in the gitignored `.env.test.local`
-(`DATABASE_URL`, `DATABASE_URL_UNPOOLED`); `vitest.setup.ts` loads that file and
-lets nothing else supply those variables, so a run can never reach the branch
-the app deploys from. Without the file, the tests that need a database fail and
-the rest still run. Tests delete the rows they create, so the suite is
-repeatable.
+(`DATABASE_URL`, `DATABASE_URL_UNPOOLED`); `vitest.setup.ts` clears both
+variables before reading that file, so an ambient or CI value can never supply
+them and a run can never reach the branch the app deploys from. A file that
+does not set `DATABASE_URL` stops the run; no file at all leaves the tests that
+need a database failing on the missing variable while the rest still run. Tests
+delete the rows they create, so the suite is repeatable.
 
 ## Framework
 

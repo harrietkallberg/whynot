@@ -4,7 +4,7 @@ import { db, schema } from "@/db";
 
 import { catOfTheDay } from "./cats";
 import { normaliseTitle } from "./goal-title";
-import { mintOwner, resolveOwner } from "./owner";
+import { mintOwner, resolveOwner, type Executor } from "./owner";
 import { mintToken } from "./tokens";
 
 export type CreateGoalInput = {
@@ -33,41 +33,48 @@ export type CreatedGoal = {
  */
 async function ownerFor(
   ownerToken: string | null | undefined,
+  executor: Executor,
 ): Promise<{ id: string; ownerToken: string }> {
   if (ownerToken) {
-    const existing = await resolveOwner(ownerToken);
+    const existing = await resolveOwner(ownerToken, executor);
     if (existing) return { id: existing.id, ownerToken };
   }
 
-  return mintOwner();
+  return mintOwner(executor);
 }
 
 /**
  * Creates a Goal, minting an Owner for it when the browser does not already
  * hold an Owner Link.
+ *
+ * Both rows are written in one transaction. A newly minted Owner whose Goal
+ * fails to insert would be unreachable forever — its token is only ever
+ * returned on success — so it must not survive the failure.
  */
 export async function createGoal({
   title: rawTitle,
   ownerToken: existingOwnerToken,
 }: CreateGoalInput): Promise<CreatedGoal> {
   const title = normaliseTitle(rawTitle);
-
-  const owner = await ownerFor(existingOwnerToken);
-
   const responseToken = mintToken();
   const catId = catOfTheDay(new Date());
-  const [goal] = await db
-    .insert(schema.goal)
-    .values({ ownerId: owner.id, responseToken, title, catId })
-    .returning({ id: schema.goal.id, title: schema.goal.title });
 
-  return {
-    goalId: goal.id,
-    title: goal.title,
-    catId,
-    ownerToken: owner.ownerToken,
-    responseToken,
-  };
+  return db.transaction(async (tx) => {
+    const owner = await ownerFor(existingOwnerToken, tx);
+
+    const [goal] = await tx
+      .insert(schema.goal)
+      .values({ ownerId: owner.id, responseToken, title, catId })
+      .returning({ id: schema.goal.id, title: schema.goal.title });
+
+    return {
+      goalId: goal.id,
+      title: goal.title,
+      catId,
+      ownerToken: owner.ownerToken,
+      responseToken,
+    };
+  });
 }
 
 /**

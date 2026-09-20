@@ -12,8 +12,8 @@ import {
 } from "./goals";
 import { hashToken } from "./tokens";
 
-/** Base58 (Bitcoin alphabet): no 0, O, I or l. 128 bits lands on 21-22 chars. */
-const BASE58_TOKEN = /^[1-9A-HJ-NP-Za-km-z]{21,22}$/;
+/** Base58 (Bitcoin alphabet): no 0, O, I or l, always a fixed width. */
+const BASE58_TOKEN = /^[1-9A-HJ-NP-Za-km-z]{22}$/;
 
 const mintedOwnerTokens: string[] = [];
 
@@ -89,6 +89,22 @@ describe("createGoal", () => {
 
     expect(goal.catId).toBe(created.catId);
     expect(goal.windowSize).toBe(3);
+  });
+
+  it("leaves no Owner behind when the Goal cannot be written", async () => {
+    const ownersBefore = await db.select().from(schema.owner);
+
+    // A title that survives normalisation — a NUL byte is not whitespace — but
+    // that Postgres refuses to store. The Owner is minted before the Goal is
+    // written, and an Owner whose Goal failed would be unreachable forever,
+    // since its token is only ever handed back on success.
+    await expect(
+      createGoal({ title: "Unwritable\u0000Goal" }),
+    ).rejects.toThrow();
+
+    const ownersAfter = await db.select().from(schema.owner);
+
+    expect(ownersAfter.length).toBe(ownersBefore.length);
   });
 
   it("mints a fresh Owner when the Owner Link belongs to nobody", async () => {

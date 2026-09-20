@@ -75,13 +75,21 @@ export async function rememberEmailAction(
     return { status: "error", message: "That does not look like an address." };
   }
 
-  const saved = await setOwnerEmail(ownerToken, email);
-  if (!saved) {
-    return {
-      status: "error",
-      message: "We could not save that address. Your links still work.",
-    };
-  }
+  const couldNotSave: EmailState = {
+    status: "error",
+    message: "We could not save that address. Your links still work.",
+  };
 
-  return { status: "saved" };
+  try {
+    return (await setOwnerEmail(ownerToken, email))
+      ? { status: "saved" }
+      : couldNotSave;
+  } catch {
+    // A database failure must not reject the action: the form would then fall
+    // through to the framework's error handling instead of the recoverable
+    // state it promises, and the Owner's links are unaffected either way. The
+    // original error is dropped because it was raised on input that carried a
+    // credential (ADR-0002).
+    return couldNotSave;
+  }
 }
