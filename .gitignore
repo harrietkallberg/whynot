@@ -1,0 +1,5 @@
+.neon
+.env.local
+node_modules/
+.claude/
+skills-lock.json
