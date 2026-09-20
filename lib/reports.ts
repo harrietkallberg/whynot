@@ -276,8 +276,12 @@ async function writeReport(
  * case.
  *
  * Call it on any read that shows a Goal's Reports. It is safe to call on every
- * such read: a Window that already has a Report is never revisited, so the
- * model is called once per Window for the life of the Goal.
+ * such read: a Window that already has a Report is never revisited, so a
+ * Goal's Reports cost one generation each and no more, however often its
+ * pages are loaded. The exception is two reads landing on the same owed
+ * Window at once, which generate in parallel and then agree on one Report —
+ * so a Window can cost more than one model call, and never more than one
+ * Report.
  *
  * Several Windows can be owed at once, and all of them are written here rather
  * than one per read. A backlog only builds up on a Goal nobody has looked at
