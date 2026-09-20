@@ -14,26 +14,17 @@ import { db, schema } from "@/db";
  */
 
 /**
- * One Window, as the generator sees it: the Goal it belongs to and the
+ * One Window, as a prompt is built from it: the Goal it belongs to and the
  * Responses in it, in the order they arrived.
  *
  * Deliberately carries no identifiers, no counts beyond the Responses
  * themselves and no timestamps — nothing that could travel from here into a
  * Report and back to a Respondent (ADR-0003).
  */
-export type ReportWindow = {
+type ReportWindow = {
   goalTitle: string;
   responses: string[];
 };
-
-/**
- * Turns one Window into the text of its Report.
- *
- * This is the seam between report generation and the model. Production passes
- * generateReportWithModel; tests pass whatever they need, which is what makes
- * the anonymity constraints in ADR-0003 testable without a model at all.
- */
-export type GenerateReport = (window: ReportWindow) => Promise<string>;
 
 /**
  * A prompt in the two parts every model API takes: standing instructions, and
@@ -45,6 +36,20 @@ export type ReportPrompt = {
   system: string;
   user: string;
 };
+
+/**
+ * Turns the prompt for one Window into the text of its Report.
+ *
+ * This is the seam between report generation and the model. Production passes
+ * generateReportWithModel; tests pass whatever they need, which is what makes
+ * the anonymity constraints in ADR-0003 testable without a model at all.
+ *
+ * A generator is handed the prompt rather than the bare Window on purpose:
+ * those constraints are a requirement, not advice, so there is no route from
+ * here to a model that does not carry them — including for whoever wires up
+ * the real generator later.
+ */
+export type GenerateReport = (prompt: ReportPrompt) => Promise<string>;
 
 /**
  * The standing instructions for writing a Report.
@@ -75,19 +80,18 @@ Write three to five sentences of plain prose, addressed to the person who set th
  * The prompt for one Window: the instructions above, and the Window's
  * Responses as material.
  *
- * Exported because it is the contract this module actually makes about
- * anonymity — the injected generator is free to call any model, but this is
- * the prompt it is meant to call it with, and it is what the tests hold to
- * ADR-0003.
+ * Every generated Report goes through here, so this is the whole of what a
+ * model is ever told about a Window, and the whole of what ADR-0003 has to
+ * hold down.
  */
-export function buildReportPrompt(window: ReportWindow): ReportPrompt {
-  const responses = window.responses
+function buildReportPrompt(reportWindow: ReportWindow): ReportPrompt {
+  const responses = reportWindow.responses
     .map((response) => `<response>\n${response}\n</response>`)
     .join("\n");
 
   return {
     system: REPORT_INSTRUCTIONS,
-    user: `Goal: ${window.goalTitle}\n\nResponses in this Window:\n\n${responses}`,
+    user: `Goal: ${reportWindow.goalTitle}\n\nResponses in this Window:\n\n${responses}`,
   };
 }
 
@@ -98,9 +102,10 @@ export const REPORT_MODEL = "claude-haiku-4-5";
  * NOT IMPLEMENTED — the production generator goes here.
  *
  * This project has no model credential of any kind yet, so there is nothing
- * to call and nothing to configure. Wiring it up means calling REPORT_MODEL
- * with buildReportPrompt(window), returning the text, and letting any failure
- * throw: maybeGenerateReport leaves the Window owed and the next read retries.
+ * to call and nothing to configure. Wiring it up means sending the prompt to
+ * REPORT_MODEL as its system and user turns, returning the text that comes
+ * back, and letting any failure throw: maybeGenerateReport then leaves the
+ * Window owed and the next read tries again.
  *
  * It throws rather than returning a placeholder, because a Report is written
  * once and never regenerated (ADR-0001) — a stand-in string would be stored
@@ -123,14 +128,12 @@ export type WrittenReport = {
   body: string;
 };
 
-/** A Window that has filled and has no Report yet. */
-type OwedWindow = {
-  goalTitle: string;
+/** A Window that has filled and has no Report yet, with its boundaries. */
+type OwedWindow = ReportWindow & {
   windowIndex: number;
   fromSeq: number;
   toSeq: number;
   windowSize: number;
-  responses: string[];
 };
 
 /**
@@ -142,14 +145,11 @@ type OwedWindow = {
  * boundaries are not recoverable from its current value.
  */
 async function findOwedWindow(goalId: string): Promise<OwedWindow | null> {
-  const [goal] = await db
-    .select({ title: schema.goal.title, windowSize: schema.goal.windowSize })
-    .from(schema.goal)
-    .where(eq(schema.goal.id, goalId))
-    .limit(1);
-
-  if (!goal) return null;
-
+  // The last Report is read before the Goal, and the order matters. Closing a
+  // Window writes the Report and promotes the Window Size in one transaction,
+  // so a reader that has seen the Report is guaranteed to see the promoted
+  // size too. Read the Goal first and a reader racing that transaction can
+  // pair the new Report with the old size, and size the next Window wrongly.
   const [lastReport] = await db
     .select({
       windowIndex: schema.report.windowIndex,
@@ -159,6 +159,14 @@ async function findOwedWindow(goalId: string): Promise<OwedWindow | null> {
     .where(eq(schema.report.goalId, goalId))
     .orderBy(desc(schema.report.windowIndex))
     .limit(1);
+
+  const [goal] = await db
+    .select({ title: schema.goal.title, windowSize: schema.goal.windowSize })
+    .from(schema.goal)
+    .where(eq(schema.goal.id, goalId))
+    .limit(1);
+
+  if (!goal) return null;
 
   const [{ highestSeq }] = await db
     .select({ highestSeq: max(schema.response.seq) })
@@ -184,10 +192,12 @@ async function findOwedWindow(goalId: string): Promise<OwedWindow | null> {
     .orderBy(schema.response.seq);
 
   if (rows.length !== goal.windowSize) {
-    // seq is meant to be gapless per Goal, and the report table's CHECK
-    // constraint reads the Window Size off the boundaries rather than off a
-    // count. A gap would therefore store a Report that claims more Responses
-    // than it saw, and pass every constraint doing it.
+    // seq is gapless per Goal — it is allocated in order and a Response is
+    // never deleted — so this cannot fire against a healthy Goal. It is here
+    // because the report table's CHECK reads the Window Size off the
+    // boundaries rather than off a count: a gap would store a Report claiming
+    // more Responses than it summarised and pass every constraint doing it.
+    // A Report an Owner cannot trust is worse than a page that says so.
     throw new Error(
       `Goal ${goalId} has ${rows.length} Responses in seq ${fromSeq}-${toSeq}, not ${goal.windowSize}.`,
     );
@@ -214,7 +224,7 @@ async function findOwedWindow(goalId: string): Promise<OwedWindow | null> {
  */
 async function writeReport(
   goalId: string,
-  window: OwedWindow,
+  owed: OwedWindow,
   body: string,
 ): Promise<WrittenReport | null> {
   return db.transaction(async (tx) => {
@@ -222,10 +232,10 @@ async function writeReport(
       .insert(schema.report)
       .values({
         goalId,
-        windowIndex: window.windowIndex,
-        fromSeq: window.fromSeq,
-        toSeq: window.toSeq,
-        windowSize: window.windowSize,
+        windowIndex: owed.windowIndex,
+        fromSeq: owed.fromSeq,
+        toSeq: owed.toSeq,
+        windowSize: owed.windowSize,
         body,
       })
       .onConflictDoNothing({
@@ -269,6 +279,11 @@ async function writeReport(
  * such read: a Window that already has a Report is never revisited, so the
  * model is called once per Window for the life of the Goal.
  *
+ * Several Windows can be owed at once, and all of them are written here rather
+ * than one per read. A backlog only builds up on a Goal nobody has looked at
+ * in a long time, and one slow read beats making an Owner reload the page once
+ * per missing Report.
+ *
  * Generation failures propagate. Nothing partial is left behind — each Report
  * is written in its own transaction after its text exists — and no Response is
  * lost, because the Window stays owed and the next read tries again.
@@ -283,10 +298,16 @@ export async function maybeGenerateReport(
     const owed = await findOwedWindow(goalId);
     if (!owed) break;
 
-    const body = await generate({
-      goalTitle: owed.goalTitle,
-      responses: owed.responses,
-    });
+    const body = await generate(buildReportPrompt(owed));
+
+    if (body.trim() === "") {
+      // A Report is written once and never regenerated (ADR-0001), so an empty
+      // one is empty for good. Treat it as a failed generation instead: the
+      // Window stays owed and the next read tries again.
+      throw new Error(
+        `Generating the Report for Window ${owed.windowIndex} of Goal ${goalId} produced no text.`,
+      );
+    }
 
     const report = await writeReport(goalId, owed, body);
     // Another reader wrote this Window while we were generating it. Anything
