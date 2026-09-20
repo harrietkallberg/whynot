@@ -1,0 +1,25 @@
+{
+  "frame": [
+    28,
+    24
+  ],
+  "poses": [
+    "asleep",
+    "alert",
+    "sitting"
+  ],
+  "cats": [
+    "ginger",
+    "ginger-inverted-cream",
+    "grey-white",
+    "grey-inverted",
+    "charcoal-white",
+    "charcoal-inverted-cream",
+    "sand",
+    "sand-inverted-white",
+    "brown-cream",
+    "brown-inverted",
+    "rust",
+    "rust-inverted-white"
+  ]
+}

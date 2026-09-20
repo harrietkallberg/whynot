@@ -5,8 +5,12 @@
  * nowhere else.
  */
 
-/** How many Cats exist. Shipping with one; the rule already handles more. */
-export const CAT_COUNT = 1;
+/**
+ * How many Cats exist. One per sprite set under `public/cats`, which
+ * `scripts/build-cats.cjs` renders; raise this only alongside that script's
+ * table of Cats.
+ */
+export const CAT_COUNT = 12;
 
 /** The number of days since the start of the year in UTC, with 1 January = 1. */
 function dayOfYear(date: Date): number {
