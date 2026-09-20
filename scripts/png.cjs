@@ -8,23 +8,42 @@ const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 // another shape would otherwise decode to silent garbage and render twelve
 // cats out of it.
 function decode(buf) {
-  if (buf.length < 33 || !buf.subarray(0, 8).equals(SIGNATURE))
-    throw new Error("not a PNG");
+  if (!buf.subarray(0, 8).equals(SIGNATURE)) throw new Error("not a PNG");
+  // The fields below are read out of the header by offset, so that the header
+  // really is where they are read from is established before they are trusted:
+  // IHDR is required to be the first chunk and to be the 13 bytes long that
+  // those offsets assume. Without this an impostor first chunk is read as the
+  // header and the whole drawing is decoded from its lies.
+  if (
+    buf.length < 33 ||
+    buf.readUInt32BE(8) !== 13 ||
+    buf.toString("ascii", 12, 16) !== "IHDR"
+  )
+    throw new Error("PNG does not open with a 13-byte IHDR chunk");
+
   const width = buf.readUInt32BE(16);
   const height = buf.readUInt32BE(20);
+  if (width === 0 || height === 0) throw new Error("PNG has no size");
   if (buf[24] !== 8 || buf[25] !== 6) throw new Error("expected 8-bit RGBA");
   if (buf[28] !== 0) throw new Error("expected a non-interlaced PNG");
 
   const idat = [];
   let p = 8;
+  let ended = false;
   while (p + 12 <= buf.length) {
     const len = buf.readUInt32BE(p);
     if (p + 12 + len > buf.length) throw new Error("truncated PNG chunk");
     const type = buf.toString("ascii", p + 4, p + 8);
     if (type === "IDAT") idat.push(buf.subarray(p + 8, p + 8 + len));
-    if (type === "IEND") break;
+    if (type === "IEND") {
+      ended = true;
+      break;
+    }
     p += 12 + len;
   }
+  // A file that stops early can still inflate to the right number of bytes, so
+  // reaching IEND is what says the drawing is all there.
+  if (!ended) throw new Error("PNG stops before its IEND chunk");
   if (idat.length === 0) throw new Error("PNG has no image data");
   const raw = zlib.inflateSync(Buffer.concat(idat));
   if (raw.length !== height * (width * 4 + 1))
@@ -117,12 +136,14 @@ function crop(img, x0, y0, w, h) {
   return { width: w, height: h, data };
 }
 
-// Anything smaller than this is a stray pixel left over from drawing rather
-// than a cat: too small to be a Pose, and ignoring it keeps one from splitting
-// a drawing into four blobs instead of three.
-const MIN_BLOB = 8;
-
-// Bounding boxes of non-transparent blobs, found by flood fill.
+// Bounding boxes of the non-transparent blobs, found by flood fill, each with
+// the number of pixels in it.
+//
+// Every blob is reported, however small. Dropping the small ones here would be
+// the one thing this function must not do: a detached mark a pixel or two wide
+// is exactly what somebody adds to a drawing on purpose, and swallowing it
+// would lose it from the artwork without a word. Which blobs are cats is the
+// caller's judgement to make, out loud.
 function blobs(img) {
   const seen = new Uint8Array(img.width * img.height);
   const found = [];
@@ -149,8 +170,7 @@ function blobs(img) {
             stack.push([nx, ny]);
           }
       }
-      if (n > MIN_BLOB)
-        found.push({ x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1, n });
+      found.push({ x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1, n });
     }
   return found;
 }

@@ -127,8 +127,17 @@ const K_BELLY_DARK = key(SOURCE_COLOURS.bellyDark);
 function loadPoses(file) {
   const img = decode(fs.readFileSync(file));
   const found = blobs(img).sort((a, b) => a.x - b.x);
+  // Anything that does not touch a cat is its own blob, so a mark left in the
+  // margin — or a detail drawn a pixel clear of the body it belongs to — shows
+  // up here as a fourth pose rather than disappearing. Listing every blob with
+  // its size says which one is the stray.
   if (found.length !== 3)
-    throw new Error(`expected 3 poses in ${path.basename(file)}, found ${found.length}`);
+    throw new Error(
+      `expected 3 poses in ${path.basename(file)}, found ${found.length}: ` +
+        found.map((b) => `${b.w}x${b.h} at ${b.x},${b.y} (${b.n}px)`).join("; ") +
+        ". Anything detached from a cat counts as a pose of its own; join it " +
+        "to the cat it belongs to, or take it out of the drawing.",
+    );
 
   const out = {};
   found.forEach((box, i) => {
