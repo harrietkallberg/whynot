@@ -75,7 +75,13 @@ export function ResponseForm({
         name="body"
         rows={8}
         minLength={minLength}
-        maxLength={maxLength}
+        /*
+         * The attribute counts UTF-16 code units, the bound counts
+         * characters, and a character can be two code units. Doubling it
+         * keeps the box from cutting a legal answer short; the server is
+         * what actually holds the line at maxLength.
+         */
+        maxLength={maxLength * 2}
         required
         autoFocus
         disabled={pending}
@@ -85,9 +91,11 @@ export function ResponseForm({
       />
       <input type="hidden" name="responseToken" value={responseToken} />
       <p className="note">
-        {/* Trimmed, because that is the length the server measures: a box
-            full of spaces must not read as long enough. */}
-        {body.trim().length} of {maxLength} characters. At least {minLength}.
+        {/* Counted the way the server counts: trimmed, and in characters
+            rather than UTF-16 halves, so an answer written in emoji reads
+            the same here as it measures there. */}
+        {[...body.trim()].length} of {maxLength} characters. At least{" "}
+        {minLength}.
       </p>
       <p className="note">{ANONYMITY_PROMISE}</p>
       <button type="submit" disabled={pending}>

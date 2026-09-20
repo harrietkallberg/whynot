@@ -42,6 +42,18 @@ function normaliseBody(body: string): string {
 }
 
 /**
+ * How long a Response is, in the characters its author typed.
+ *
+ * Not `String.length`, which counts UTF-16 code units: an emoji is two of
+ * those and one of these. The column's CHECK uses Postgres char_length, which
+ * counts code points, so measuring the halves would refuse five emoji as too
+ * short and then let a thousand of them hit the constraint instead.
+ */
+export function responseLength(body: string): number {
+  return [...body].length;
+}
+
+/**
  * Whether a body can be stored at all, or null when it can.
  *
  * Exported so the form's action can turn a hopeless answer away before it
@@ -51,7 +63,7 @@ function normaliseBody(body: string): string {
 export function checkResponseLength(
   body: string,
 ): "too-short" | "too-long" | null {
-  const length = normaliseBody(body).length;
+  const length = responseLength(normaliseBody(body));
 
   if (length < MIN_RESPONSE_LENGTH) return "too-short";
   if (length > MAX_RESPONSE_LENGTH) return "too-long";

@@ -12,6 +12,13 @@ import { mintToken } from "@/lib/tokens";
  *
  * It is scoped to the Response Links, so it is never sent to a Dashboard, and
  * httpOnly so no page script can read it back out.
+ *
+ * A browser that clears this cookie is a new browser and will be allowed to
+ * answer again. That is the shape of the rule, not a hole in it: the guard
+ * stops one person answering twice by accident, and the only identity that
+ * would survive a determined reset is the IP address, which is ruled out
+ * because the core use case is several colleagues on one office network.
+ * Nothing downstream may read a Response count as a count of people.
  */
 export const BROWSER_COOKIE = "whynot.browser";
 

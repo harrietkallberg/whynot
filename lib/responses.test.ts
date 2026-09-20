@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { db, schema } from "@/db";
 
 import { createGoal } from "./goals";
-import { browserHashFor, createResponse } from "./responses";
+import {
+  browserHashFor,
+  createResponse,
+  MAX_RESPONSE_LENGTH,
+} from "./responses";
 import { hashToken } from "./tokens";
 
 const mintedOwnerTokens: string[] = [];
@@ -142,6 +146,39 @@ describe("createResponse", () => {
 
     expect(result).toEqual({ status: "too-short" });
     expect(await responsesOf(goal.goalId)).toEqual([]);
+  });
+
+  it("counts a character the way the column does, not in UTF-16 halves", async () => {
+    const goal = await createTestGoal("Play the Wigmore Hall");
+    // Five emoji: ten UTF-16 code units, but five characters to Postgres and
+    // to the person who typed them. Measuring the halves would let this
+    // through the bounds and then break on the column's CHECK.
+    const fiveCharacters = "🙂".repeat(5);
+
+    const result = await createResponse({
+      responseToken: goal.responseToken,
+      body: fiveCharacters,
+      browserHash: browserHashFor("a-browser", goal.responseToken),
+    });
+
+    expect(result).toEqual({ status: "too-short" });
+    expect(await responsesOf(goal.goalId)).toEqual([]);
+  });
+
+  it("takes a thousand characters even when every one of them is an emoji", async () => {
+    const goal = await createTestGoal("Play the Wigmore Hall");
+    const thousandCharacters = "🙂".repeat(MAX_RESPONSE_LENGTH);
+
+    const result = await createResponse({
+      responseToken: goal.responseToken,
+      body: thousandCharacters,
+      browserHash: browserHashFor("a-browser", goal.responseToken),
+    });
+
+    expect(result).toEqual({ status: "recorded" });
+    expect(await responsesOf(goal.goalId)).toEqual([
+      { seq: 1, body: thousandCharacters },
+    ]);
   });
 
   it("refuses a Response over a thousand characters", async () => {
