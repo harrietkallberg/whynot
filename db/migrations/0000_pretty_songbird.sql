@@ -24,7 +24,7 @@ CREATE TABLE "owner" (
 CREATE TABLE "report" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"goal_id" uuid NOT NULL,
-	"window_index" smallint NOT NULL,
+	"window_index" integer NOT NULL,
 	"from_seq" integer NOT NULL,
 	"to_seq" integer NOT NULL,
 	"window_size" smallint NOT NULL,
@@ -32,7 +32,8 @@ CREATE TABLE "report" (
 	"read_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "report_goal_window" UNIQUE("goal_id","window_index"),
-	CONSTRAINT "report_seq_order" CHECK ("report"."from_seq" <= "report"."to_seq")
+	CONSTRAINT "report_window_size_range" CHECK ("report"."window_size" between 3 and 30),
+	CONSTRAINT "report_window_span" CHECK ("report"."to_seq" - "report"."from_seq" + 1 = "report"."window_size")
 );
 --> statement-breakpoint
 CREATE TABLE "response" (

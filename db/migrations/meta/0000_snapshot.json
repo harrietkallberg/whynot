@@ -1,5 +1,5 @@
 {
-  "id": "02c37e39-dce2-4fc8-bcea-f107b4530d40",
+  "id": "7b7fbc71-d432-4111-8b00-ee336b85b870",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -171,7 +171,7 @@
         },
         "window_index": {
           "name": "window_index",
-          "type": "smallint",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true
         },
@@ -242,9 +242,13 @@
       },
       "policies": {},
       "checkConstraints": {
-        "report_seq_order": {
-          "name": "report_seq_order",
-          "value": "\"report\".\"from_seq\" <= \"report\".\"to_seq\""
+        "report_window_size_range": {
+          "name": "report_window_size_range",
+          "value": "\"report\".\"window_size\" between 3 and 30"
+        },
+        "report_window_span": {
+          "name": "report_window_span",
+          "value": "\"report\".\"to_seq\" - \"report\".\"from_seq\" + 1 = \"report\".\"window_size\""
         }
       },
       "isRLSEnabled": false

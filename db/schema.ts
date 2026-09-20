@@ -96,7 +96,7 @@ export const report = pgTable(
     goalId: uuid("goal_id")
       .notNull()
       .references(() => goal.id, { onDelete: "cascade" }),
-    windowIndex: smallint("window_index").notNull(),
+    windowIndex: integer("window_index").notNull(),
     fromSeq: integer("from_seq").notNull(),
     toSeq: integer("to_seq").notNull(),
     windowSize: smallint("window_size").notNull(),
@@ -108,7 +108,16 @@ export const report = pgTable(
   },
   (t) => [
     unique("report_goal_window").on(t.goalId, t.windowIndex),
-    check("report_seq_order", sql`${t.fromSeq} <= ${t.toSeq}`),
+    check("report_window_size_range", sql`${t.windowSize} between 3 and 30`),
+    // A Window is exactly windowSize Responses, so its inclusive span has to
+    // match. Without this the database accepts rows like from=1, to=20,
+    // size=3 — a Report asserting a 20-Response Window that claims to be 3,
+    // which contradicts the fixed-Window guarantee in ADR-0001. This also
+    // makes fromSeq <= toSeq redundant.
+    check(
+      "report_window_span",
+      sql`${t.toSeq} - ${t.fromSeq} + 1 = ${t.windowSize}`,
+    ),
   ],
 );
 
