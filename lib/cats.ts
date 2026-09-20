@@ -5,8 +5,12 @@
  * nowhere else.
  */
 
-/** How many Cats exist. Shipping with one; the rule already handles more. */
-export const CAT_COUNT = 1;
+/**
+ * How many Cats exist. One for each Cat drawn under `public/cats`, which
+ * `scripts/build-cats.cjs` renders from its own table of Cats; the two are
+ * raised together or the Dashboard asks for a Cat nobody drew.
+ */
+export const CAT_COUNT = 12;
 
 /** The number of days since the start of the year in UTC, with 1 January = 1. */
 function dayOfYear(date: Date): number {
@@ -25,9 +29,9 @@ function dayOfYear(date: Date): number {
  * read in UTC so every visitor sees the same Cat at the same moment whatever
  * their clock says.
  *
- * The size of the set is a parameter because with one Cat the rule is
- * invisible: every date answers 0, and the wrap at the end of the set could
- * break unnoticed until the day a second Cat is drawn.
+ * The size of the set is a parameter so a test can watch the walk wrap without
+ * waiting for the calendar, and so adding a Cat stays a matter of drawing one
+ * and raising the count.
  */
 export function catOfTheDay(date: Date, catCount: number = CAT_COUNT): number {
   return dayOfYear(date) % catCount;
