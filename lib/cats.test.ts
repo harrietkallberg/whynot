@@ -43,7 +43,7 @@ describe("catOfTheDay", () => {
 
   it("only ever names a Cat that has been drawn, and names each of them", () => {
     // Every answer is an index into `public/cats`, so a day that fell outside
-    // the set would leave the Dashboard asking for a sprite that is not there.
+    // the set would leave the Dashboard asking for a Cat nobody drew.
     const seen = new Set<number>();
     const day = new Date("2024-01-01T12:00:00Z"); // a leap year: 366 days
 

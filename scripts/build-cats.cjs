@@ -1,10 +1,10 @@
-// Build the Cat of the Day sprites.
+// Draw every Cat of the Day, in every Pose.
 //
 //   node scripts/build-cats.cjs [outDir] [--sheet <file>]
 //
 // Every path is resolved against the repository, not the working directory, so
 // the script runs the same from anywhere. `outDir` defaults to `public/cats`,
-// the sprites committed to the repo; pass one to render somewhere else and
+// the drawings committed to the repo; pass one to render somewhere else and
 // diff the result. `--sheet` additionally writes a magnified contact sheet of
 // the whole set for eyeballing a palette change; it is never shipped.
 //
@@ -26,13 +26,19 @@ const args = process.argv.slice(2);
 const positional = [];
 let sheet = null;
 for (let i = 0; i < args.length; i++) {
-  if (args[i] !== "--sheet") {
+  if (args[i] === "--sheet") {
+    sheet = args[++i];
+    if (!sheet || sheet.startsWith("-")) throw new Error("--sheet needs a file path");
+  } else if (args[i].startsWith("-")) {
+    // Otherwise a typo becomes the output directory and the drawings land in
+    // one named "--shet".
+    throw new Error(`unknown option "${args[i]}"`);
+  } else {
     positional.push(args[i]);
-    continue;
   }
-  sheet = args[++i];
-  if (!sheet) throw new Error("--sheet needs a file path");
 }
+if (positional.length > 1)
+  throw new Error(`expected at most one output directory, got ${positional.length}`);
 const OUT = path.resolve(positional[0] || path.join(REPO, "public", "cats"));
 const SHEET = sheet === null ? null : path.resolve(sheet);
 
@@ -96,12 +102,13 @@ const CATS = [
 ];
 
 // ---------------------------------------------------------------------------
-// FRAME
+// THE POSE BOX
 // ---------------------------------------------------------------------------
 
-// One frame for every pose, so the icon never shifts as a Goal changes state.
-const FRAME_W = 28;
-const FRAME_H = 24;
+// Every Pose is drawn into a box this size, so a Cat holds still on the page
+// as its Goal changes state rather than jumping about.
+const POSE_W = 28;
+const POSE_H = 24;
 
 const POSES = ["asleep", "alert", "sitting"];
 // Left to right in the source drawings.
@@ -115,8 +122,8 @@ const K_SHADE = key(SOURCE_COLOURS.shade);
 const K_BELLY_LIGHT = key(SOURCE_COLOURS.bellyLight);
 const K_BELLY_DARK = key(SOURCE_COLOURS.bellyDark);
 
-// Lift each pose out of a drawing onto the shared frame: centred horizontally,
-// bottom-aligned so every pose stands on one baseline.
+// Lift each Pose out of a drawing into the shared box: centred horizontally,
+// bottom-aligned so every Pose stands on one baseline.
 function loadPoses(file) {
   const img = decode(fs.readFileSync(file));
   const found = blobs(img).sort((a, b) => a.x - b.x);
@@ -125,21 +132,27 @@ function loadPoses(file) {
 
   const out = {};
   found.forEach((box, i) => {
-    const sprite = crop(img, box.x, box.y, box.w, box.h);
-    const data = Buffer.alloc(FRAME_W * FRAME_H * 4);
-    const dx = Math.floor((FRAME_W - box.w) / 2);
-    const dy = FRAME_H - box.h;
+    if (box.w > POSE_W || box.h > POSE_H)
+      throw new Error(
+        `the ${SOURCE_ORDER[i]} pose in ${path.basename(file)} is ${box.w}x${box.h}, ` +
+          `which does not fit the ${POSE_W}x${POSE_H} box`,
+      );
+
+    const pose = crop(img, box.x, box.y, box.w, box.h);
+    const data = Buffer.alloc(POSE_W * POSE_H * 4);
+    const dx = Math.floor((POSE_W - box.w) / 2);
+    const dy = POSE_H - box.h;
     for (let y = 0; y < box.h; y++)
       for (let x = 0; x < box.w; x++) {
         const s = (y * box.w + x) * 4;
-        sprite.data.copy(data, ((y + dy) * FRAME_W + (x + dx)) * 4, s, s + 4);
+        pose.data.copy(data, ((y + dy) * POSE_W + (x + dx)) * 4, s, s + 4);
       }
-    out[SOURCE_ORDER[i]] = { width: FRAME_W, height: FRAME_H, data };
+    out[SOURCE_ORDER[i]] = { width: POSE_W, height: POSE_H, data };
   });
   return out;
 }
 
-const FRAMES = {
+const DRAWN = {
   plain: loadPoses(SOURCES.plain),
   belly: loadPoses(SOURCES.belly),
 };
@@ -149,12 +162,12 @@ function render(cat, pose) {
   if (!base) throw new Error(`unknown base "${cat.base}"`);
   if (cat.belly && !BELLIES[cat.belly]) throw new Error(`unknown belly "${cat.belly}"`);
 
-  const frame = FRAMES[cat.belly ? "belly" : "plain"][pose];
+  const drawn = DRAWN[cat.belly ? "belly" : "plain"][pose];
   const fur = cat.inverted ? base.shade : base.fur;
   const shade = cat.inverted ? base.fur : base.shade;
   const belly = cat.belly ? BELLIES[cat.belly] : null;
 
-  const data = Buffer.from(frame.data);
+  const data = Buffer.from(drawn.data);
   for (let i = 0; i < data.length; i += 4) {
     if (data[i + 3] === 0) continue;
     const k = key([data[i], data[i + 1], data[i + 2]]);
@@ -166,7 +179,7 @@ function render(cat, pose) {
       : null;
     if (to) { data[i] = to[0]; data[i + 1] = to[1]; data[i + 2] = to[2]; }
   }
-  return { width: FRAME_W, height: FRAME_H, data };
+  return { width: POSE_W, height: POSE_H, data };
 }
 
 const label = (c) =>
@@ -179,24 +192,24 @@ CATS.forEach((cat, id) => {
 });
 fs.writeFileSync(
   path.join(OUT, "cats.json"),
-  JSON.stringify({ frame: [FRAME_W, FRAME_H], poses: POSES, cats: CATS.map(label) }, null, 2) + "\n",
+  JSON.stringify({ size: [POSE_W, POSE_H], poses: POSES, cats: CATS.map(label) }, null, 2) + "\n",
 );
 
 // Contact sheet: the whole set at once, magnified, for eyeballing a palette
 // change. Written only when asked for, and never shipped.
 if (SHEET !== null) {
   const GAP = 2;
-  const sheetW = POSES.length * (FRAME_W + GAP) + GAP;
-  const sheetH = CATS.length * (FRAME_H + GAP) + GAP;
+  const sheetW = POSES.length * (POSE_W + GAP) + GAP;
+  const sheetH = CATS.length * (POSE_H + GAP) + GAP;
   const pixels = Buffer.alloc(sheetW * sheetH * 4);
   CATS.forEach((cat, r) =>
     POSES.forEach((pose, c) => {
       const f = render(cat, pose);
-      const ox = GAP + c * (FRAME_W + GAP);
-      const oy = GAP + r * (FRAME_H + GAP);
-      for (let y = 0; y < FRAME_H; y++)
-        for (let x = 0; x < FRAME_W; x++) {
-          const s = (y * FRAME_W + x) * 4;
+      const ox = GAP + c * (POSE_W + GAP);
+      const oy = GAP + r * (POSE_H + GAP);
+      for (let y = 0; y < POSE_H; y++)
+        for (let x = 0; x < POSE_W; x++) {
+          const s = (y * POSE_W + x) * 4;
           f.data.copy(pixels, ((oy + y) * sheetW + (ox + x)) * 4, s, s + 4);
         }
     }),
@@ -206,5 +219,8 @@ if (SHEET !== null) {
   console.log(`contact sheet -> ${SHEET}`);
 }
 
-console.log(`${CATS.length} cats x ${POSES.length} poses = ${CATS.length * POSES.length} sprites -> ${OUT}`);
+console.log(
+  `${CATS.length} cats x ${POSES.length} poses = ` +
+    `${CATS.length * POSES.length} drawings -> ${OUT}`,
+);
 CATS.forEach((c, i) => console.log(`  ${String(i).padStart(2, "0")}  ${label(c)}`));

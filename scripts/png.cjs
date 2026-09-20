@@ -1,20 +1,34 @@
 // Minimal PNG decode/encode for 8-bit RGBA, plus upscale and crop. No deps.
 const zlib = require("zlib");
 
+const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+// This reads the one shape the drawings are saved in and refuses everything
+// else, loudly. The refusals matter more than they look: a re-export in
+// another shape would otherwise decode to silent garbage and render twelve
+// cats out of it.
 function decode(buf) {
+  if (buf.length < 33 || !buf.subarray(0, 8).equals(SIGNATURE))
+    throw new Error("not a PNG");
   const width = buf.readUInt32BE(16);
   const height = buf.readUInt32BE(20);
   if (buf[24] !== 8 || buf[25] !== 6) throw new Error("expected 8-bit RGBA");
+  if (buf[28] !== 0) throw new Error("expected a non-interlaced PNG");
 
   const idat = [];
   let p = 8;
-  while (p < buf.length) {
+  while (p + 12 <= buf.length) {
     const len = buf.readUInt32BE(p);
+    if (p + 12 + len > buf.length) throw new Error("truncated PNG chunk");
     const type = buf.toString("ascii", p + 4, p + 8);
-    if (type === "IDAT") idat.push(buf.slice(p + 8, p + 8 + len));
+    if (type === "IDAT") idat.push(buf.subarray(p + 8, p + 8 + len));
+    if (type === "IEND") break;
     p += 12 + len;
   }
+  if (idat.length === 0) throw new Error("PNG has no image data");
   const raw = zlib.inflateSync(Buffer.concat(idat));
+  if (raw.length !== height * (width * 4 + 1))
+    throw new Error("PNG image data is the wrong size");
 
   const bpp = 4;
   const stride = width * bpp;
@@ -103,6 +117,11 @@ function crop(img, x0, y0, w, h) {
   return { width: w, height: h, data };
 }
 
+// Anything smaller than this is a stray pixel left over from drawing rather
+// than a cat: too small to be a Pose, and ignoring it keeps one from splitting
+// a drawing into four blobs instead of three.
+const MIN_BLOB = 8;
+
 // Bounding boxes of non-transparent blobs, found by flood fill.
 function blobs(img) {
   const seen = new Uint8Array(img.width * img.height);
@@ -130,19 +149,10 @@ function blobs(img) {
             stack.push([nx, ny]);
           }
       }
-      if (n > 8) found.push({ x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1, n });
+      if (n > MIN_BLOB)
+        found.push({ x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1, n });
     }
   return found;
 }
 
-function palette(img) {
-  const counts = new Map();
-  for (let i = 0; i < img.data.length; i += 4) {
-    if (img.data[i + 3] === 0) continue;
-    const k = `${img.data[i]},${img.data[i + 1]},${img.data[i + 2]},${img.data[i + 3]}`;
-    counts.set(k, (counts.get(k) || 0) + 1);
-  }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-}
-
-module.exports = { decode, encode, scale, crop, blobs, palette };
+module.exports = { decode, encode, scale, crop, blobs };
