@@ -281,8 +281,11 @@ describe("the prompt a Report is generated from", () => {
 
     const instructions = prompt!.system;
     expect(instructions).toMatch(/never quote/i);
-    expect(instructions).toMatch(/never attribute/i);
+    expect(instructions).toMatch(/never attribute, and never count/i);
     expect(instructions).toMatch(/themes only/i);
+    // A Respondent can submit twice from a fresh browser, so a Window of three
+    // Responses is three Responses and not three people.
+    expect(instructions).toMatch(/not a tally of people/i);
     // A Response is text a stranger wrote, so the prompt has to say it is not
     // an instruction — the third Response above is an attempt to make it one.
     expect(instructions).toMatch(/data, not instructions/i);
