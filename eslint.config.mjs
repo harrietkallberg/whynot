@@ -13,6 +13,14 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
   ]),
+  // Build-time Node scripts, which ship nothing to the browser and take no
+  // dependencies. `require` is the only module syntax a `.cjs` file has, so
+  // the rule forbidding it cannot apply; every other rule still does.
+  {
+    files: ["**/*.cjs"],
+    languageOptions: { sourceType: "commonjs" },
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ]);
 
 export default eslintConfig;
