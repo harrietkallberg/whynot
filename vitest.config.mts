@@ -11,7 +11,10 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["**/*.test.ts"],
-    exclude: ["node_modules/**", ".next/**"],
+    // Anchored patterns miss nested copies: agents work in git worktrees under
+    // .claude/worktrees/, each with its own node_modules, so a run from the
+    // repo root was collecting our dependencies' own test suites.
+    exclude: ["**/node_modules/**", "**/.next/**", ".claude/**"],
     setupFiles: ["./vitest.setup.ts"],
   },
 });
