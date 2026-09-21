@@ -163,7 +163,7 @@ export async function openGoal(
     .where(eq(schema.report.goalId, goal.id))
     .orderBy(asc(schema.report.windowIndex));
 
-  await markReportsRead(goal.id);
+  await markReportsRead(reports.map((report) => report.id));
 
   const responseCounts = await countResponses([goal.id]);
 
@@ -186,16 +186,31 @@ export async function openGoal(
 }
 
 /**
- * Marks every unread Report on a Goal as read. The read time is bookkeeping
- * for the Pose and never leaves this module (ADR-0003); a Report itself is
- * untouched, because nothing may rewrite one (ADR-0001).
+ * Marks these Reports read: exactly the ones a page load put on screen, by id.
+ *
+ * Not "every unread Report on the Goal", which is the same query one round
+ * trip later and quietly sweeps up anything written in between. Two requests
+ * overlapping on one Goal is the ordinary case here — generation is lazy, so
+ * any page load can write a Report — and a Report marked read by a page that
+ * never showed it is the one signal this product exists to deliver, lost
+ * silently: its Cat would settle to sitting having never gone alert.
+ *
+ * The read time is bookkeeping for the Pose and never leaves this module
+ * (ADR-0003). A Report itself is untouched, because nothing may rewrite one
+ * (ADR-0001).
  */
-async function markReportsRead(goalId: string): Promise<void> {
+async function markReportsRead(reportIds: string[]): Promise<void> {
+  if (reportIds.length === 0) return;
+
   await db
     .update(schema.report)
     .set({ readAt: new Date() })
     .where(
-      and(eq(schema.report.goalId, goalId), isNull(schema.report.readAt)),
+      and(
+        inArray(schema.report.id, reportIds),
+        // A Report read on an earlier visit keeps the time it was first read.
+        isNull(schema.report.readAt),
+      ),
     );
 }
 
@@ -235,16 +250,16 @@ async function catchUpReports(
     goalIds.map(async (goalId) => {
       try {
         await maybeGenerateReport(goalId, generate);
-      } catch (error) {
+      } catch {
         owed.add(goalId);
-        // A Goal id is not a credential and no Owner Link reaches this far
-        // (ADR-0002). The error itself comes from whichever generator was
-        // passed in, so keeping Response text out of what one throws is a
-        // constraint on the generator, not something this line can enforce.
-        console.error(
-          `Could not write the Report owed by Goal ${goalId}`,
-          error,
-        );
+        // The Goal id and nothing else. A generator is handed the Window's
+        // Responses verbatim, and a model client that quotes its own request
+        // back in an exception — which is ordinary for an HTTP client — would
+        // otherwise put a Respondent's words in the server log, where ADR-0003
+        // says they may never appear. The error is dropped rather than
+        // trimmed, because no amount of trimming makes a stranger's exception
+        // safe to print.
+        console.error(`Could not write the Report owed by Goal ${goalId}`);
       }
     }),
   );

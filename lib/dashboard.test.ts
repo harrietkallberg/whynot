@@ -196,6 +196,33 @@ describe("dashboardFor", () => {
     ]);
   });
 
+  it("keeps a failed generation's error, and the Responses in it, out of the log", async () => {
+    const created = await seedGoal("Play the Wigmore Hall");
+    await seedResponses(created.responseToken, THREE_RESPONSES);
+
+    // A model client that quotes its own request back in the exception, which
+    // is ordinary behaviour for an HTTP client — and that request is the
+    // Window's Responses, verbatim.
+    const echoesItsRequest: GenerateReport = async (prompt) => {
+      throw new Error(`502 from the model. Request body: ${prompt.user}`);
+    };
+
+    await dashboardFor(created.ownerToken, echoesItsRequest);
+
+    const logged = vi
+      .mocked(console.error)
+      .mock.calls.flat()
+      .map((entry) => (entry instanceof Error ? entry.stack : String(entry)))
+      .join("\n");
+
+    // It says a Report could not be written, and says it about a Goal id.
+    expect(logged).toContain(created.goalId);
+    // ADR-0003: a Respondent's words may not turn up in a server log either.
+    for (const response of THREE_RESPONSES) {
+      expect(logged).not.toContain(response);
+    }
+  });
+
   it("shows nothing at all to an Owner Link that belongs to nobody", async () => {
     await seedGoal("Play the Wigmore Hall");
 
