@@ -50,6 +50,26 @@ regenerated, so a Goal's Reports read in order show how its reception changed
 over time.
 _Avoid_: insight, analysis, summary, feedback report
 
+### The Goal's life
+
+**Archived**:
+The state of a Goal whose Owner has said they got their yes. It accepts no
+further Responses, its Reports stay readable, and nothing about it is deleted.
+There is no separate "closed" state; archiving is what closing a Goal means.
+_Avoid_: closed, finished, completed, done
+
+**Discarded**:
+The state of a Goal its Owner asked to delete. It leaves the Dashboard at once
+and its Responses and Reports are erased thirty days later, so the Owner has
+that long to undo a mistake. Only an Owner's request discards a Goal; being
+abandoned does not.
+_Avoid_: deleted, removed, trashed, soft-deleted
+
+**Unread**:
+A Report the Owner has not yet opened. Opening a Goal marks the Reports it
+showed as read, which is what settles its Cat from alert into sitting.
+_Avoid_: new, unseen, pending, fresh
+
 ### Access
 
 **Owner Link**:
