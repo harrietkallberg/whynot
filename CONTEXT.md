@@ -53,17 +53,12 @@ _Avoid_: insight, analysis, summary, feedback report
 ### The Goal's life
 
 **Archived**:
-The state of a Goal whose Owner has said they got their yes. It accepts no
-further Responses, its Reports stay readable, and nothing about it is deleted.
-There is no separate "closed" state; archiving is what closing a Goal means.
+The state of a Goal its Owner has put away, either because they got their yes
+or because they want it off the Dashboard. It accepts no further Responses, its
+Reports stay readable, nothing is deleted, and it can be brought back. There is
+no separate "closed" state; archiving is what closing a Goal means, and it is
+the only recoverable way to make a Goal go away.
 _Avoid_: closed, finished, completed, done
-
-**Discarded**:
-The state of a Goal its Owner asked to delete. It leaves the Dashboard at once
-and its Responses and Reports are erased thirty days later, so the Owner has
-that long to undo a mistake. Only an Owner's request discards a Goal; being
-abandoned does not.
-_Avoid_: deleted, removed, trashed, soft-deleted
 
 **Unread**:
 A Report the Owner has not yet opened. Opening a Goal marks the Reports it
