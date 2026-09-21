@@ -2,6 +2,7 @@
 
 import { useActionState, useState, useSyncExternalStore } from "react";
 
+import { CopyButton } from "./copy-button";
 import {
   createGoalAction,
   rememberEmailAction,
@@ -144,29 +145,6 @@ function GoalLinks({
 
       <EmailBox ownerToken={state.ownerToken} />
     </>
-  );
-}
-
-function CopyButton({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false);
-
-  return (
-    <p>
-      <button
-        type="button"
-        onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(value);
-            setCopied(true);
-          } catch {
-            setCopied(false);
-          }
-        }}
-      >
-        {label}
-      </button>{" "}
-      {copied ? <span>Copied.</span> : null}
-    </p>
   );
 }
 
