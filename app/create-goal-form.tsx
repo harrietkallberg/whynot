@@ -5,7 +5,7 @@ import { useActionState, useState, useSyncExternalStore } from "react";
 import { CopyButton } from "./copy-button";
 import {
   createGoalAction,
-  rememberEmailAction,
+  emailOwnerLinkAction,
   type CreateGoalState,
   type EmailState,
 } from "./actions";
@@ -150,17 +150,17 @@ function GoalLinks({
 
 function EmailBox({ ownerToken }: { ownerToken: string }) {
   const [state, formAction, pending] = useActionState<EmailState, FormData>(
-    rememberEmailAction,
+    emailOwnerLinkAction,
     { status: "idle" },
   );
 
-  if (state.status === "saved") {
+  if (state.status === "sent") {
     return (
       <>
         <hr />
         <p>
-          Address saved. Nothing is sent yet — we have not picked a mail
-          provider — so keep the link above as well.
+          Sent. If it is not in your inbox in a few minutes, look in spam, and
+          keep the link above as well until it arrives.
         </p>
       </>
     );
@@ -184,7 +184,7 @@ function EmailBox({ ownerToken }: { ownerToken: string }) {
           Skipping this is the normal path. Your links work either way.
         </p>
         <button type="submit" disabled={pending}>
-          {pending ? "Saving..." : "Save my address"}
+          {pending ? "Sending..." : "Email me the link"}
         </button>
         {state.status === "error" ? (
           <p className="error" role="alert">
