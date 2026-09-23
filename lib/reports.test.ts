@@ -291,8 +291,15 @@ describe("maybeGenerateReport", () => {
     const goalId = await seedGoal();
     await seedResponses(goalId, THREE_RESPONSES);
 
+    await seedResponses(goalId, ["It would take 1.5 days to get there."]);
+    await db
+      .update(schema.goal)
+      .set({ windowSize: 4 })
+      .where(eq(schema.goal.id, goalId));
+
+    // "15" is not the "1.5" a Response gave.
     const summary =
-      "One of the main concerns was cost, and timing was another. The fee felt high for a first season.";
+      "One of the main concerns was cost, and timing was another. The fee felt high for a 15-minute slot.";
     const [written] = await maybeGenerateReport(goalId, async () => summary);
 
     expect(written.body).toBe(summary);

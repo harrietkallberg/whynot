@@ -190,10 +190,14 @@ const COUNTS_OR_ATTRIBUTES = [
   /\b(?:someone|somebody|respondents?|one person|another person)\b/i,
 ];
 
-/** Every figure in a text, with thousands separators dropped. */
+/**
+ * Every figure in a text, with thousands separators dropped — only a comma,
+ * point or space followed by exactly three digits, so "14,500" and "14500"
+ * match while "1.5" and "15" do not.
+ */
 function figuresIn(text: string): string[] {
-  return (text.match(/\p{N}[\p{N},.]*/gu) ?? []).map((figure) =>
-    figure.replace(/[,.]/g, ""),
+  return (text.match(/\p{N}+(?:[,. ]\p{N}{3}(?!\p{N}))*(?:\.\p{N}+)?/gu) ?? []).map(
+    (figure) => figure.replace(/[,. ](?=\p{N}{3}(?:\D|$))/gu, ""),
   );
 }
 
