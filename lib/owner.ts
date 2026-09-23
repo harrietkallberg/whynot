@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 
 import { db, schema } from "@/db";
 
+import type { SendOwnerLink } from "./mail";
 import { hashToken, mintToken } from "./tokens";
 
 /**
@@ -53,22 +54,43 @@ export async function mintOwner(executor: Executor = db): Promise<MintedOwner> {
   return { id: owner.id, ownerToken };
 }
 
-/**
- * Records the address an Owner asked their link to be sent to. Nothing is sent
- * from here: no mail provider has been chosen yet, and email never gates the
- * main flow (ADR-0002).
- */
-export async function setOwnerEmail(
-  ownerToken: string,
-  email: string,
-): Promise<boolean> {
-  const owner = await resolveOwner(ownerToken);
-  if (!owner) return false;
+export type EmailOwnerLinkInput = {
+  ownerToken: string;
+  email: string;
+  /** Where the app is served, such as https://whynot.example. */
+  origin: string;
+};
 
+export type EmailOwnerLinkResult = "sent" | "unknown-owner" | "not-sent";
+
+/**
+ * Records the address an Owner asked their link to be sent to, and sends the
+ * link there. Email never gates the main flow (ADR-0002), so this resolves
+ * whatever happens to the mail: "not-sent" is a state to show the Owner, and
+ * they still hold the link on screen. `send` is passed in so nothing but the
+ * app itself ever sends real mail.
+ */
+export async function emailOwnerLink(
+  { ownerToken, email, origin }: EmailOwnerLinkInput,
+  send: SendOwnerLink,
+): Promise<EmailOwnerLinkResult> {
+  const owner = await resolveOwner(ownerToken);
+  if (!owner) return "unknown-owner";
+
+  const to = email.trim();
   await db
     .update(schema.owner)
-    .set({ email: email.trim() })
+    .set({ email: to })
     .where(eq(schema.owner.id, owner.id));
 
-  return true;
+  try {
+    const sent = await send({ to, ownerLink: `${origin}/d/${ownerToken}` });
+    return sent ? "sent" : "not-sent";
+  } catch {
+    // A sender is supposed to resolve false rather than throw, but this is the
+    // last place a failure can be kept from becoming a failed request. The
+    // error is dropped: it was raised on a mail carrying an Owner Link and an
+    // address, and neither may reach a log (ADR-0002).
+    return "not-sent";
+  }
 }
