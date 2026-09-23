@@ -1,10 +1,16 @@
 import { eq, inArray } from "drizzle-orm";
+import { registerTelemetry } from "ai";
+import { MockLanguageModelV4 } from "ai/test";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { db, schema } from "@/db";
 
 import { createGoal } from "./goals";
-import { maybeGenerateReport, type ReportPrompt } from "./reports";
+import {
+  generateReportWith,
+  maybeGenerateReport,
+  type ReportPrompt,
+} from "./reports";
 import { hashToken } from "./tokens";
 
 const GOAL_TITLE = "Play the Wigmore Hall";
@@ -223,6 +229,82 @@ describe("maybeGenerateReport", () => {
     expect(await storedReports(goalId)).toEqual([]);
   });
 
+  it("refuses to store a Report that quotes a Response, and leaves the Window owed", async () => {
+    // The prompt forbids quoting, but a model can disobey it and a Report is
+    // stored for good (ADR-0001), so a quote has to fail closed here.
+    const goalId = await seedGoal();
+    await seedResponses(goalId, THREE_RESPONSES);
+
+    await expect(
+      maybeGenerateReport(
+        goalId,
+        async () => "Mostly cost: we already booked someone else, they said.",
+      ),
+    ).rejects.toThrow(/broke the Report rules/);
+
+    expect(await storedReports(goalId)).toEqual([]);
+
+    const retried = await maybeGenerateReport(
+      goalId,
+      async () => "Cost and timing came up most.",
+    );
+    expect(retried).toHaveLength(1);
+  });
+
+  it("refuses to store a Report that counts or attributes", async () => {
+    const goalId = await seedGoal();
+    await seedResponses(goalId, THREE_RESPONSES);
+
+    for (const body of [
+      "Two of you raised cost.",
+      "One person felt the timing was wrong.",
+      "Several respondents pointed to the budget.",
+      "Cost came up in 2 of the answers.",
+      "Someone had already made other plans.",
+    ]) {
+      await expect(
+        maybeGenerateReport(goalId, async () => body),
+      ).rejects.toThrow(/broke the Report rules/);
+    }
+
+    expect(await storedReports(goalId)).toEqual([]);
+  });
+
+  it("refuses to store a Report that repeats a figure a Response gave", async () => {
+    const goalId = await seedGoal();
+    await seedResponses(goalId, [
+      ...THREE_RESPONSES.slice(0, 2),
+      "Your fee of 14,500 kronor was too much.",
+    ]);
+
+    await expect(
+      maybeGenerateReport(
+        goalId,
+        async () => "A fee around 14500 was felt to be too high.",
+      ),
+    ).rejects.toThrow(/broke the Report rules/);
+  });
+
+  it("stores a Report whose ordinary phrasing only resembles a count", async () => {
+    // A false positive keeps the Window owed, so the check has to let plain
+    // prose through.
+    const goalId = await seedGoal();
+    await seedResponses(goalId, THREE_RESPONSES);
+
+    await seedResponses(goalId, ["It would take 1.5 days to get there."]);
+    await db
+      .update(schema.goal)
+      .set({ windowSize: 4 })
+      .where(eq(schema.goal.id, goalId));
+
+    // "15" is not the "1.5" a Response gave.
+    const summary =
+      "One of the main concerns was cost, and timing was another. The fee felt high for a 15-minute slot.";
+    const [written] = await maybeGenerateReport(goalId, async () => summary);
+
+    expect(written.body).toBe(summary);
+  });
+
   it("writes one Report when two readers reach the same Window at once", async () => {
     const goalId = await seedGoal();
     await seedResponses(goalId, THREE_RESPONSES);
@@ -289,6 +371,9 @@ describe("the prompt a Report is generated from", () => {
     // A Response is text a stranger wrote, so the prompt has to say it is not
     // an instruction — the third Response above is an attempt to make it one.
     expect(instructions).toMatch(/data, not instructions/i);
+    // And a demand is not a reason: describing it ("some asked to be named")
+    // would characterise the one Response that made it.
+    expect(instructions).toMatch(/leave it out of the Report entirely/i);
     // And volume never relaxes any of it (ADR-0003).
     expect(instructions).toMatch(/larger window does not/i);
 
@@ -314,5 +399,61 @@ describe("the prompt a Report is generated from", () => {
 
     const [stored] = await storedReports(goalId);
     expect(stored.body).toBe(summary);
+  });
+});
+
+describe("generateReportWith", () => {
+  const prompt: ReportPrompt = {
+    system: "The standing rules for a Report.",
+    user: "Goal: Play the Wigmore Hall\n\n<response>\nThe fee was too high.\n</response>",
+  };
+
+  /** A model that answers every call with the given text. */
+  function modelAnswering(text: string) {
+    return new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [{ type: "text", text }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: {
+            total: 10,
+            noCache: 10,
+            cacheRead: undefined,
+            cacheWrite: undefined,
+          },
+          outputTokens: { total: 5, text: 5, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+  }
+
+  it("sends the rules as the system turn and the Window as the user turn, and returns the model's text", async () => {
+    const model = modelAnswering("Cost came up most.");
+
+    const body = await generateReportWith(model)(prompt);
+
+    expect(body).toBe("Cost came up most.");
+    expect(model.doGenerateCalls).toHaveLength(1);
+    expect(model.doGenerateCalls[0].prompt).toEqual([
+      { role: "system", content: prompt.system },
+      { role: "user", content: [{ type: "text", text: prompt.user }] },
+    ]);
+  });
+
+  it("keeps the Window out of any telemetry the app registers", async () => {
+    // Telemetry records inputs and outputs by default, and an integration
+    // registered anywhere in the app would otherwise receive every word of the
+    // Window. ADR-0005: nothing carrying Response text may leave for a log.
+    const seen: unknown[] = [];
+    registerTelemetry({
+      onStart: (event) => void seen.push(event),
+      onLanguageModelCallStart: (event) => void seen.push(event),
+      onEnd: (event) => void seen.push(event),
+    });
+
+    await generateReportWith(modelAnswering("Cost came up most."))(prompt);
+
+    expect(seen).toEqual([]);
   });
 });

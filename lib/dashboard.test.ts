@@ -1,3 +1,4 @@
+import { generateText } from "ai";
 import { inArray } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -5,7 +6,16 @@ import { db, schema } from "@/db";
 
 import { dashboardFor, openGoal } from "./dashboard";
 import { createGoal } from "./goals";
-import { type GenerateReport } from "./reports";
+import { type GenerateReport, REPORT_MODEL } from "./reports";
+
+// The model call itself is replaced, so a test that reaches the production
+// generator by default gets a Report back without any network at all.
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("ai")>()),
+  generateText: vi.fn(async () => ({
+    text: "The reasons were mostly about money and timing.",
+  })),
+}));
 import { createResponse } from "./responses";
 import { hashToken } from "./tokens";
 
@@ -39,19 +49,16 @@ async function seedResponses(
   }
 }
 
-/**
- * A generator that writes a Report without a model, standing in for the one
- * that is not wired up yet.
- */
+/** A generator that writes a Report without calling a model. */
 const generateTheme: GenerateReport = async () =>
   "The reasons were mostly about money and timing.";
 
 /**
- * A generator that fails, which is what the unwired one does today. The log
- * it provokes is silenced so a passing run stays quiet.
+ * A generator that fails, as the real one does when the provider is down. The
+ * log it provokes is silenced so a passing run stays quiet.
  */
 const failToGenerate: GenerateReport = async () => {
-  throw new Error("no model is wired up");
+  throw new Error("the model was unreachable");
 };
 
 beforeEach(() => {
@@ -100,7 +107,7 @@ describe("dashboardFor", () => {
     await seedResponses(first.responseToken, THREE_RESPONSES);
     await seedResponses(second.responseToken, THREE_RESPONSES.slice(0, 1));
 
-    const dashboard = await dashboardFor(first.ownerToken);
+    const dashboard = await dashboardFor(first.ownerToken, generateTheme);
     const counted = new Map(
       dashboard.map((goal) => [goal.title, goal.responseCount]),
     );
@@ -135,9 +142,24 @@ describe("dashboardFor", () => {
     ]);
   });
 
+  it("writes an owed Report with the production generator when none is passed", async () => {
+    // The SDK boundary is faked (see the vi.mock above), so this proves the
+    // wiring from a page load to REPORT_MODEL without calling a model.
+    const created = await seedGoal("Play the Wigmore Hall");
+    await seedResponses(created.responseToken, THREE_RESPONSES);
+
+    const dashboard = await dashboardFor(created.ownerToken);
+
+    expect(dashboard).toEqual([
+      expect.objectContaining({ pose: "alert", responseCount: 3 }),
+    ]);
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({ model: REPORT_MODEL }),
+    );
+  });
+
   it("still draws the Dashboard when the Report a Goal owes cannot be generated", async () => {
-    // The state the app ships in: generateReportWithModel throws, because no
-    // model is wired up. A Window that has filled is owed, not lost.
+    // A provider failure: a Window that has filled is owed, not lost.
     const failing = await seedGoal("Play the Wigmore Hall");
     const other = await seedGoal("Find a cellist", failing.ownerToken);
     await seedResponses(failing.responseToken, THREE_RESPONSES);
