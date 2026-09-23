@@ -18,8 +18,22 @@ const TEST_ENV_FILE = ".env.test.local";
  */
 const DATABASE_VARIABLES = ["DATABASE_URL", "DATABASE_URL_UNPOOLED"] as const;
 
+/**
+ * Credentials the AI Gateway would accept. Tests pass their own generator and
+ * never call a real model, and anything that reaches the production one by
+ * default must fail rather than send a fixture to a provider and bill for it.
+ * They are cleared after the test env file is read, so not even that file can
+ * supply one.
+ */
+const MODEL_CREDENTIALS = ["AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN"] as const;
+
+function clearModelCredentials(): void {
+  for (const name of MODEL_CREDENTIALS) delete process.env[name];
+}
+
 function loadTestEnv(): void {
   for (const name of DATABASE_VARIABLES) delete process.env[name];
+  clearModelCredentials();
 
   let contents: string;
   try {
@@ -41,6 +55,8 @@ function loadTestEnv(): void {
     const value = rawValue.trim().replace(/^(['"])(.*)\1$/s, "$2");
     process.env[key] = value;
   }
+
+  clearModelCredentials();
 
   if (!process.env.DATABASE_URL) {
     // The file exists but does not say which database to use. Stop here rather

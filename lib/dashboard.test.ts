@@ -39,19 +39,16 @@ async function seedResponses(
   }
 }
 
-/**
- * A generator that writes a Report without a model, standing in for the one
- * that is not wired up yet.
- */
+/** A generator that writes a Report without calling a model. */
 const generateTheme: GenerateReport = async () =>
   "The reasons were mostly about money and timing.";
 
 /**
- * A generator that fails, which is what the unwired one does today. The log
- * it provokes is silenced so a passing run stays quiet.
+ * A generator that fails, as the real one does when the provider is down. The
+ * log it provokes is silenced so a passing run stays quiet.
  */
 const failToGenerate: GenerateReport = async () => {
-  throw new Error("no model is wired up");
+  throw new Error("the model was unreachable");
 };
 
 beforeEach(() => {
@@ -100,7 +97,7 @@ describe("dashboardFor", () => {
     await seedResponses(first.responseToken, THREE_RESPONSES);
     await seedResponses(second.responseToken, THREE_RESPONSES.slice(0, 1));
 
-    const dashboard = await dashboardFor(first.ownerToken);
+    const dashboard = await dashboardFor(first.ownerToken, generateTheme);
     const counted = new Map(
       dashboard.map((goal) => [goal.title, goal.responseCount]),
     );
@@ -136,8 +133,7 @@ describe("dashboardFor", () => {
   });
 
   it("still draws the Dashboard when the Report a Goal owes cannot be generated", async () => {
-    // The state the app ships in: generateReportWithModel throws, because no
-    // model is wired up. A Window that has filled is owed, not lost.
+    // A provider failure: a Window that has filled is owed, not lost.
     const failing = await seedGoal("Play the Wigmore Hall");
     const other = await seedGoal("Find a cellist", failing.ownerToken);
     await seedResponses(failing.responseToken, THREE_RESPONSES);

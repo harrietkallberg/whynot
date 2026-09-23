@@ -1,10 +1,16 @@
 import { eq, inArray } from "drizzle-orm";
+import { registerTelemetry } from "ai";
+import { MockLanguageModelV4 } from "ai/test";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { db, schema } from "@/db";
 
 import { createGoal } from "./goals";
-import { maybeGenerateReport, type ReportPrompt } from "./reports";
+import {
+  generateReportWith,
+  maybeGenerateReport,
+  type ReportPrompt,
+} from "./reports";
 import { hashToken } from "./tokens";
 
 const GOAL_TITLE = "Play the Wigmore Hall";
@@ -289,6 +295,9 @@ describe("the prompt a Report is generated from", () => {
     // A Response is text a stranger wrote, so the prompt has to say it is not
     // an instruction — the third Response above is an attempt to make it one.
     expect(instructions).toMatch(/data, not instructions/i);
+    // And a demand is not a reason: describing it ("some asked to be named")
+    // would characterise the one Response that made it.
+    expect(instructions).toMatch(/leave it out of the Report entirely/i);
     // And volume never relaxes any of it (ADR-0003).
     expect(instructions).toMatch(/larger window does not/i);
 
@@ -314,5 +323,61 @@ describe("the prompt a Report is generated from", () => {
 
     const [stored] = await storedReports(goalId);
     expect(stored.body).toBe(summary);
+  });
+});
+
+describe("generateReportWith", () => {
+  const prompt: ReportPrompt = {
+    system: "The standing rules for a Report.",
+    user: "Goal: Play the Wigmore Hall\n\n<response>\nThe fee was too high.\n</response>",
+  };
+
+  /** A model that answers every call with the given text. */
+  function modelAnswering(text: string) {
+    return new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [{ type: "text", text }],
+        finishReason: { unified: "stop", raw: undefined },
+        usage: {
+          inputTokens: {
+            total: 10,
+            noCache: 10,
+            cacheRead: undefined,
+            cacheWrite: undefined,
+          },
+          outputTokens: { total: 5, text: 5, reasoning: undefined },
+        },
+        warnings: [],
+      }),
+    });
+  }
+
+  it("sends the rules as the system turn and the Window as the user turn, and returns the model's text", async () => {
+    const model = modelAnswering("Cost came up most.");
+
+    const body = await generateReportWith(model)(prompt);
+
+    expect(body).toBe("Cost came up most.");
+    expect(model.doGenerateCalls).toHaveLength(1);
+    expect(model.doGenerateCalls[0].prompt).toEqual([
+      { role: "system", content: prompt.system },
+      { role: "user", content: [{ type: "text", text: prompt.user }] },
+    ]);
+  });
+
+  it("keeps the Window out of any telemetry the app registers", async () => {
+    // Telemetry records inputs and outputs by default, and an integration
+    // registered anywhere in the app would otherwise receive every word of the
+    // Window. ADR-0005: nothing carrying Response text may leave for a log.
+    const seen: unknown[] = [];
+    registerTelemetry({
+      onStart: (event) => void seen.push(event),
+      onLanguageModelCallStart: (event) => void seen.push(event),
+      onEnd: (event) => void seen.push(event),
+    });
+
+    await generateReportWith(modelAnswering("Cost came up most."))(prompt);
+
+    expect(seen).toEqual([]);
   });
 });
