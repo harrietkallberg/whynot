@@ -56,12 +56,6 @@ export function CreateGoalForm() {
 
   return (
     <>
-      <h1>WhyNot</h1>
-      <p className="tagline">
-        Every yes is preceded by a pile of nos. Collect the reasons,
-        anonymously.
-      </p>
-
       {dashboardHref !== null && state.status !== "created" ? (
         <p>
           This browser already holds an Owner Link.{" "}
