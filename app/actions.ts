@@ -1,8 +1,11 @@
 "use server";
 
+import { headers } from "next/headers";
+
 import { InvalidGoalTitleError } from "@/lib/goal-title";
 import { createGoal } from "@/lib/goals";
-import { setOwnerEmail } from "@/lib/owner";
+import { senderFromEnv } from "@/lib/mail";
+import { emailOwnerLink } from "@/lib/owner";
 
 /**
  * Nothing in this file logs a token or puts one in an error message: an Owner
@@ -57,14 +60,15 @@ export async function createGoalAction(
 export type EmailState =
   | { status: "idle" }
   | { status: "error"; message: string }
-  | { status: "saved" };
+  | { status: "sent" };
 
 /**
- * Records the address, and sends nothing: no mail provider has been chosen.
- * Email is a recovery channel that never gates the main flow (ADR-0002), so a
- * failure here leaves the Goal, and both links, exactly as they were.
+ * Sends the Owner their link. Email is a recovery channel that never gates the
+ * main flow (ADR-0002): the Goal already exists by the time this runs, so every
+ * failure comes back as a state the form can show and retry, never as a
+ * rejection, and leaves the Goal and both links exactly as they were.
  */
-export async function rememberEmailAction(
+export async function emailOwnerLinkAction(
   _state: EmailState,
   formData: FormData,
 ): Promise<EmailState> {
@@ -75,21 +79,37 @@ export async function rememberEmailAction(
     return { status: "error", message: "That does not look like an address." };
   }
 
-  const couldNotSave: EmailState = {
+  const notSent: EmailState = {
     status: "error",
-    message: "We could not save that address. Your links still work.",
+    message:
+      "We could not send that. Your links still work: copy the Owner Link above, or try again.",
   };
 
   try {
-    return (await setOwnerEmail(ownerToken, email))
-      ? { status: "saved" }
-      : couldNotSave;
+    const result = await emailOwnerLink(
+      { ownerToken, email, origin: await requestOrigin() },
+      senderFromEnv(),
+    );
+    return result === "sent" ? { status: "sent" } : notSent;
   } catch {
     // A database failure must not reject the action: the form would then fall
     // through to the framework's error handling instead of the recoverable
     // state it promises, and the Owner's links are unaffected either way. The
     // original error is dropped because it was raised on input that carried a
-    // credential (ADR-0002).
-    return couldNotSave;
+    // credential and an address (ADR-0002).
+    return notSent;
   }
+}
+
+/**
+ * Where this request reached the app, so the mailed Owner Link points back at
+ * the place the Owner is using. Built the way the Goal page builds its
+ * Response Link.
+ */
+async function requestOrigin(): Promise<string> {
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host");
+  const protocol = requestHeaders.get("x-forwarded-proto") ?? "https";
+  if (!host) throw new Error("The request carried no host");
+  return `${protocol}://${host}`;
 }
