@@ -229,6 +229,75 @@ describe("maybeGenerateReport", () => {
     expect(await storedReports(goalId)).toEqual([]);
   });
 
+  it("refuses to store a Report that quotes a Response, and leaves the Window owed", async () => {
+    // The prompt forbids quoting, but a model can disobey it and a Report is
+    // stored for good (ADR-0001), so a quote has to fail closed here.
+    const goalId = await seedGoal();
+    await seedResponses(goalId, THREE_RESPONSES);
+
+    await expect(
+      maybeGenerateReport(
+        goalId,
+        async () => "Mostly cost: we already booked someone else, they said.",
+      ),
+    ).rejects.toThrow(/broke the Report rules/);
+
+    expect(await storedReports(goalId)).toEqual([]);
+
+    const retried = await maybeGenerateReport(
+      goalId,
+      async () => "Cost and timing came up most.",
+    );
+    expect(retried).toHaveLength(1);
+  });
+
+  it("refuses to store a Report that counts or attributes", async () => {
+    const goalId = await seedGoal();
+    await seedResponses(goalId, THREE_RESPONSES);
+
+    for (const body of [
+      "Two of you raised cost.",
+      "One person felt the timing was wrong.",
+      "Several respondents pointed to the budget.",
+      "Cost came up in 2 of the answers.",
+      "Someone had already made other plans.",
+    ]) {
+      await expect(
+        maybeGenerateReport(goalId, async () => body),
+      ).rejects.toThrow(/broke the Report rules/);
+    }
+
+    expect(await storedReports(goalId)).toEqual([]);
+  });
+
+  it("refuses to store a Report that repeats a figure a Response gave", async () => {
+    const goalId = await seedGoal();
+    await seedResponses(goalId, [
+      ...THREE_RESPONSES.slice(0, 2),
+      "Your fee of 14,500 kronor was too much.",
+    ]);
+
+    await expect(
+      maybeGenerateReport(
+        goalId,
+        async () => "A fee around 14500 was felt to be too high.",
+      ),
+    ).rejects.toThrow(/broke the Report rules/);
+  });
+
+  it("stores a Report whose ordinary phrasing only resembles a count", async () => {
+    // A false positive keeps the Window owed, so the check has to let plain
+    // prose through.
+    const goalId = await seedGoal();
+    await seedResponses(goalId, THREE_RESPONSES);
+
+    const summary =
+      "One of the main concerns was cost, and timing was another. The fee felt high for a first season.";
+    const [written] = await maybeGenerateReport(goalId, async () => summary);
+
+    expect(written.body).toBe(summary);
+  });
+
   it("writes one Report when two readers reach the same Window at once", async () => {
     const goalId = await seedGoal();
     await seedResponses(goalId, THREE_RESPONSES);

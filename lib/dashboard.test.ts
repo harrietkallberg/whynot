@@ -1,3 +1,4 @@
+import { generateText } from "ai";
 import { inArray } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -5,7 +6,16 @@ import { db, schema } from "@/db";
 
 import { dashboardFor, openGoal } from "./dashboard";
 import { createGoal } from "./goals";
-import { type GenerateReport } from "./reports";
+import { type GenerateReport, REPORT_MODEL } from "./reports";
+
+// The model call itself is replaced, so a test that reaches the production
+// generator by default gets a Report back without any network at all.
+vi.mock("ai", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("ai")>()),
+  generateText: vi.fn(async () => ({
+    text: "The reasons were mostly about money and timing.",
+  })),
+}));
 import { createResponse } from "./responses";
 import { hashToken } from "./tokens";
 
@@ -130,6 +140,22 @@ describe("dashboardFor", () => {
     expect(dashboard).toEqual([
       expect.objectContaining({ pose: "alert", responseCount: 3 }),
     ]);
+  });
+
+  it("writes an owed Report with the production generator when none is passed", async () => {
+    // The SDK boundary is faked (see the vi.mock above), so this proves the
+    // wiring from a page load to REPORT_MODEL without calling a model.
+    const created = await seedGoal("Play the Wigmore Hall");
+    await seedResponses(created.responseToken, THREE_RESPONSES);
+
+    const dashboard = await dashboardFor(created.ownerToken);
+
+    expect(dashboard).toEqual([
+      expect.objectContaining({ pose: "alert", responseCount: 3 }),
+    ]);
+    expect(generateText).toHaveBeenCalledWith(
+      expect.objectContaining({ model: REPORT_MODEL }),
+    );
   });
 
   it("still draws the Dashboard when the Report a Goal owes cannot be generated", async () => {

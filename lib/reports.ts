@@ -150,6 +150,82 @@ export function generateReportWith(model: LanguageModel): GenerateReport {
 export const generateReportWithModel: GenerateReport =
   generateReportWith(REPORT_MODEL);
 
+/**
+ * How many consecutive words a Report may share with a Response before it
+ * counts as a quote. Five is long enough that ordinary phrasing ("the fee was
+ * too") does not trip it and short enough to catch a lifted clause.
+ */
+const QUOTE_WORDS = 5;
+
+/** A text's words, lower-cased, with punctuation dropped. */
+function wordsOf(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[‘’]/g, "'")
+    .split(/[^\p{L}\p{N}']+/u)
+    .filter(Boolean);
+}
+
+/** Every run of `size` consecutive words in a text. */
+function runsOf(words: string[], size: number): Set<string> {
+  const runs = new Set<string>();
+  for (let start = 0; start + size <= words.length; start++) {
+    runs.add(words.slice(start, start + size).join(" "));
+  }
+  return runs;
+}
+
+/**
+ * Counting and attribution in the forms a model reaches for: a quantity of
+ * people or Responses ("two of you", "several respondents", "2 of the
+ * answers"), and a lone voice ("someone", "one person").
+ *
+ * Deliberately narrow. A false positive is not harmless: the Window stays
+ * owed, and a model that keeps tripping it leaves the Owner with no Report at
+ * all. So "one of the main concerns" passes, and a figure passes unless it
+ * came out of a Response.
+ */
+const COUNTS_OR_ATTRIBUTES = [
+  /\b(?:\p{N}+|one|two|three|four|five|six|seven|eight|nine|ten|several|a few|a couple|some|many|most|all|each|half|none|few|majority|minority)\s+(?:of\s+(?:the\s+|these\s+|those\s+)?)?(?:you|them|us|people|persons?|respondents?|responses?|answers?|voices?|individuals?)\b/iu,
+  /\b(?:someone|somebody|respondents?|one person|another person)\b/i,
+];
+
+/** Every figure in a text, with thousands separators dropped. */
+function figuresIn(text: string): string[] {
+  return (text.match(/\p{N}[\p{N},.]*/gu) ?? []).map((figure) =>
+    figure.replace(/[,.]/g, ""),
+  );
+}
+
+/**
+ * Whether a generated Report visibly breaks the rules it was given: a run of
+ * words lifted from a Response, a figure a Response gave, a count, or an
+ * attribution.
+ *
+ * This cannot catch a paraphrase or a subtle attribution — that is the
+ * prompt's job, and the model's. It catches the breaches that can be caught
+ * mechanically, which are also the most damaging ones.
+ */
+function breaksReportRules(body: string, responses: string[]): boolean {
+  if (COUNTS_OR_ATTRIBUTES.some((pattern) => pattern.test(body))) return true;
+
+  const reportFigures = new Set(figuresIn(body));
+  if (
+    responses.some((response) =>
+      figuresIn(response).some((figure) => reportFigures.has(figure)),
+    )
+  ) {
+    return true;
+  }
+
+  const reportRuns = runsOf(wordsOf(body), QUOTE_WORDS);
+  return responses.some((response) =>
+    [...runsOf(wordsOf(response), QUOTE_WORDS)].some((run) =>
+      reportRuns.has(run),
+    ),
+  );
+}
+
 /** A Report as it was written. Nothing ever updates one. */
 export type WrittenReport = {
   id: string;
@@ -343,6 +419,16 @@ export async function maybeGenerateReport(
       // Window stays owed and the next read tries again.
       throw new Error(
         `Generating the Report for Window ${owed.windowIndex} of Goal ${goalId} produced no text.`,
+      );
+    }
+
+    if (breaksReportRules(body, owed.responses)) {
+      // The prompt is the first line of defence and this is the last: a model
+      // can disobey its instructions, and what it wrote would be stored for
+      // good. Fail closed, so the Window stays owed and the next read
+      // generates afresh. The message carries neither text, by design.
+      throw new Error(
+        `The Report generated for Window ${owed.windowIndex} of Goal ${goalId} broke the Report rules.`,
       );
     }
 
